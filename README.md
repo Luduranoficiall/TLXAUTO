@@ -150,3 +150,21 @@ SQL de referência em `docs/postgres_rls.sql`.
 ### Smoke test (sem subir servidor)
 
 Em `tlx-ads/backend/` você pode rodar `smoke_test.py` para validar o fluxo principal (auth + ads + templates + links + métricas).
+
+## Repositório GitHub
+
+Este projeto está versionado em:
+
+- <https://github.com/Luduranoficiall/TLXAUTO>
+
+### Auto-push (envia sozinho para o GitHub)
+
+Este repositório vem com um hook versionado em `.githooks/post-commit`.
+
+- Se `core.hooksPath` estiver apontando para `.githooks`, **todo `git commit` vai fazer `git push` automaticamente**.
+- Para desativar temporariamente: `export TLXAUTO_AUTOPUSH=0`
+- Para desativar de vez: `git config --unset core.hooksPath`
+
+Para reativar em qualquer máquina:
+
+- `./scripts/setup-autopush.sh`
