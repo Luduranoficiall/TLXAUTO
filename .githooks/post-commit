@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# TLXAUTO auto-push: envia para o origin automaticamente após cada commit.
+# Para desativar temporariamente: export TLXAUTO_AUTOPUSH=0
+# Para desativar de vez: git config --unset core.hooksPath
+
+if [[ "${TLXAUTO_AUTOPUSH:-1}" != "1" ]]; then
+  exit 0
+fi
+
+if ! git remote get-url origin >/dev/null 2>&1; then
+  # Ainda não existe remote configurado.
+  exit 0
+fi
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+# Se já existe upstream, só faz push.
+if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+  git push
+  exit 0
+fi
+
+# Se não existe upstream (primeiro push), tenta configurar.
+git push -u origin "$branch"
