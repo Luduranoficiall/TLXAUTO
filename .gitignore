@@ -1,0 +1,33 @@
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# DB (dev)
+*.db
+*.sqlite
+*.sqlite3
+
+# OS/Editor
+.DS_Store
+.vscode/

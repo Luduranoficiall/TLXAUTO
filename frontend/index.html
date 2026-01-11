@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+
+    <meta http-equiv="Content-Language" content="pt-BR" />
+
+    <!-- Responsivo (mantido no padrão que você enviou) -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+
+    <!-- UX mobile -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- ícones -->
+    <link rel="icon" type="image/png" href="/images/logo_sender.png" />
+    <link rel="apple-touch-icon" href="/images/icons/apple-touch-icon.png" />
+
+    <!-- PWA -->
+    <meta name="theme-color" content="#0B0F14" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TLXAUTO" />
+    <meta name="application-name" content="TLXAUTO" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- SEO -->
+    <title>TLXAUTO — Sistema de Oficina / Auto Center</title>
+    <meta
+      name="description"
+      content="TLXAUTO: clientes, veículos e ordens de serviço com visual premium TLX."
+    />
+
+    <!-- Social / Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:title" content="TLXAUTO — Sistema de Oficina / Auto Center" />
+    <meta
+      property="og:description"
+      content="Clientes, veículos e ordens de serviço com visual premium TLX."
+    />
+    <meta property="og:image" content="/images/logo_sender.png" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="TLXAUTO" />
+    <meta name="twitter:description" content="Sistema de oficina / auto center." />
+    <meta name="twitter:image" content="/images/logo_sender.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <noscript>
+      <div
+        style="padding: 16px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;"
+      >
+        Este sistema precisa de JavaScript habilitado para funcionar.
+      </div>
+    </noscript>
+
+    <!-- App (Vite + TypeScript puro) -->
+    <script type="module" src="/src/main.ts"></script>
+
+    <!-- Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js');
+      }
+    </script>
+  </body>
+</html>

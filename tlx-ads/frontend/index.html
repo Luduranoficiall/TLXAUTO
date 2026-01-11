@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TLXAUTO</title>
+    <style>
+      :root {
+        /* Base (Preto/Grafite) */
+        --bg: #0B0F14;
+        --bg2: #121212;
+
+        /* Cinzas técnicos */
+        --panel: #111720;
+        --panel2: #0E141C;
+        --border: #2A2A2A;
+        --border2: #3A3A3A;
+        --text: #EDEFF3;
+        --muted: #8E8E8E;
+
+        /* Azul tech */
+        --primary: #0A84FF;
+        --primary2: #0066FF;
+
+        /* Dourado premium (usar com parcimônia) */
+        --gold: #F5B301;
+        --gold2: #D4AF37;
+
+        --danger: #FF4D5E;
+        --ok: #3DDC97;
+
+        --shadow: 0 10px 28px rgba(0, 0, 0, 0.40);
+        --radius: 14px;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        max-width: 1040px;
+        margin: 26px auto;
+        padding: 0 16px;
+        background: radial-gradient(1200px 700px at 20% -10%, rgba(10, 132, 255, 0.18), transparent 50%),
+                    radial-gradient(900px 600px at 90% 0%, rgba(245, 179, 1, 0.10), transparent 55%),
+                    linear-gradient(180deg, var(--bg), var(--bg2));
+        color: var(--text);
+      }
+
+      a { color: var(--primary); text-decoration: none; }
+      a:hover { color: #66B2FF; text-decoration: underline; }
+
+      .row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+      input, textarea, select, button {
+        padding: 11px 12px;
+        font-size: 14px;
+        border-radius: 12px;
+      }
+
+      input, textarea, select {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        border: 1px solid var(--border);
+        outline: none;
+        transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+      }
+
+      input::placeholder, textarea::placeholder { color: rgba(237, 239, 243, 0.45); }
+
+      input:focus, textarea:focus, select:focus {
+        border-color: rgba(10, 132, 255, 0.75);
+        box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.18);
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      textarea { min-height: 120px; }
+
+      button {
+        cursor: pointer;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        transition: transform 80ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+      }
+      button:hover { background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.18); }
+      button:active { transform: translateY(1px); }
+      button:focus { outline: none; box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.16); }
+
+      /* CTA (Azul Tech) */
+      #btnLogin, #btnRegister, #btnCreateAd, #btnRefresh, #btnAcceptInvite, #btnRequestReset, #btnConfirmReset {
+        background: linear-gradient(180deg, rgba(10, 132, 255, 0.95), rgba(0, 102, 255, 0.95));
+        border-color: rgba(10, 132, 255, 0.35);
+        box-shadow: 0 8px 20px rgba(10, 132, 255, 0.18);
+      }
+      #btnLogin:hover, #btnRegister:hover, #btnCreateAd:hover, #btnRefresh:hover, #btnAcceptInvite:hover, #btnRequestReset:hover, #btnConfirmReset:hover {
+        box-shadow: 0 10px 26px rgba(10, 132, 255, 0.26);
+      }
+
+      .card {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: linear-gradient(180deg, rgba(17, 23, 32, 0.92), rgba(14, 20, 28, 0.92));
+        border-radius: var(--radius);
+        padding: 14px;
+        margin: 12px 0;
+        box-shadow: var(--shadow);
+      }
+
+      .muted { color: var(--muted); }
+
+      .topbar {
+        display:flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(0, 0, 0, 0.20);
+        backdrop-filter: blur(10px);
+      }
+
+      nav.card {
+        display:flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      nav.card a {
+        display:inline-flex;
+        align-items:center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+      }
+      nav.card a:hover {
+        text-decoration: none;
+        border-color: rgba(10, 132, 255, 0.35);
+        box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.14);
+      }
+
+      .hidden { display: none; }
+      .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+
+      /* Alerts */
+      .danger { color: var(--danger); }
+      .ok { color: var(--ok); }
+      .card.danger {
+        border-color: rgba(255, 77, 94, 0.30);
+        background: linear-gradient(180deg, rgba(255, 77, 94, 0.10), rgba(17, 23, 32, 0.92));
+      }
+      .card.ok {
+        border-color: rgba(61, 220, 151, 0.25);
+        background: linear-gradient(180deg, rgba(61, 220, 151, 0.10), rgba(17, 23, 32, 0.92));
+      }
+
+      /* Pills (neutro + destaque premium opcional) */
+      .pill {
+        display:inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        font-size: 12px;
+        color: rgba(237, 239, 243, 0.92);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .pill.premium {
+        border-color: rgba(245, 179, 1, 0.35);
+        color: rgba(245, 179, 1, 0.98);
+        background: rgba(245, 179, 1, 0.10);
+      }
+
+      /* KPIs (dourado só onde importa) */
+      .kpiGrid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      @media (max-width: 800px) {
+        .kpiGrid { grid-template-columns: 1fr; }
+      }
+      .kpi {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .kpiValue {
+        margin-top: 6px;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .kpi.premium {
+        border-color: rgba(245, 179, 1, 0.25);
+        background: linear-gradient(180deg, rgba(245, 179, 1, 0.10), rgba(255, 255, 255, 0.02));
+      }
+      .kpi.premium .kpiValue {
+        color: rgba(245, 179, 1, 0.98);
+        text-shadow: 0 10px 26px rgba(245, 179, 1, 0.10);
+      }
+
+      /* Anúncios (layout mais enterprise) */
+      .adHeader {
+        display:flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .adTitle {
+        font-size: 16px;
+        font-weight: 750;
+        letter-spacing: 0.2px;
+      }
+      .adPills { display:flex; gap: 8px; flex-wrap: wrap; align-items:center; }
+      .adBody { margin-top: 10px; white-space: pre-wrap; line-height: 1.45; color: rgba(237, 239, 243, 0.94); }
+      .adMeta { margin-top: 10px; display:flex; flex-wrap: wrap; gap: 10px; }
+      .adActions {
+        min-width: 230px;
+        display:flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      @media (max-width: 700px) {
+        .adActions { min-width: 100%; }
+      }
+      .btn {
+        width: 100%;
+        text-align: left;
+        border-radius: 12px;
+      }
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.10);
+      }
+      .btn-secondary:hover {
+        border-color: rgba(10, 132, 255, 0.22);
+        box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.12);
+      }
+      .btn-danger {
+        background: rgba(255, 77, 94, 0.10);
+        border-color: rgba(255, 77, 94, 0.22);
+        color: rgba(255, 210, 214, 0.98);
+      }
+      .btn-danger:hover {
+        border-color: rgba(255, 77, 94, 0.35);
+        box-shadow: 0 0 0 4px rgba(255, 77, 94, 0.14);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: rgba(237, 239, 243, 0.92);
+        background: rgba(255, 255, 255, 0.06);
+        padding: 2px 6px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <h2>TLXAUTO — Plataforma de Anúncios</h2>
+      <div>
+        <span id="userInfo" class="muted" style="margin-right:10px;"></span>
+        <button id="btnLogout" class="hidden">Sair</button>
+      </div>
+    </div>
+
+    <nav class="card">
+      <a href="/" id="navHome">Home</a>
+      <a href="/accept-invite" id="navAccept">Aceitar Convite</a>
+      <a href="/reset-password" id="navReset">Reset de Senha</a>
+      <span class="muted" style="float:right;">API: <code id="apiBaseLabel"></code></span>
+    </nav>
+
+    <div id="alerts"></div>
+
+    <section id="authSection" class="card">
+      <h3>Login / Cadastro</h3>
+      <div class="grid2">
+        <div>
+          <label>Email</label>
+          <input id="email" type="email" placeholder="voce@dominio.com" />
+        </div>
+        <div>
+          <label>Senha</label>
+          <input id="password" type="password" placeholder="mínimo 6 caracteres" />
+        </div>
+      </div>
+      <div style="margin-top: 10px;">
+        <label>Tenant (slug) — opcional</label>
+        <input id="tenantSlug" placeholder="default" />
+        <div class="muted" style="margin-top:6px;">Se deixar vazio, usa <code>default</code>. Se informar um slug novo no cadastro, cria um tenant.</div>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <button id="btnLogin">Entrar</button>
+        <button id="btnRegister">Cadastrar</button>
+      </div>
+      <p class="muted">Backend padrão: <code>http://localhost:8000</code> (ajuste em <code>app.ts</code>).</p>
+    </section>
+
+    <section id="acceptInviteSection" class="card hidden">
+      <h3>Aceitar Convite</h3>
+      <p class="muted">Abra via link do convite: <code>/accept-invite?token=...</code></p>
+
+      <div class="grid2">
+        <div>
+          <label>Token</label>
+          <input id="inviteToken" placeholder="token do convite" />
+        </div>
+        <div>
+          <label>Senha (nova)</label>
+          <input id="invitePassword" type="password" placeholder="mínimo 6 caracteres" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 12px;">
+        <button id="btnAcceptInvite">Aceitar convite</button>
+      </div>
+    </section>
+
+    <section id="resetPasswordSection" class="card hidden">
+      <h3>Reset de Senha</h3>
+
+      <div class="card">
+        <h4>1) Solicitar token</h4>
+        <div class="grid2">
+          <div>
+            <label>Email</label>
+            <input id="resetEmail" type="email" placeholder="voce@dominio.com" />
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="btnRequestReset">Enviar token</button>
+          </div>
+        </div>
+        <p class="muted">Se SMTP estiver configurado, chega por email. Em dev, a API pode retornar o token/link.</p>
+      </div>
+
+      <div class="card">
+        <h4>2) Confirmar reset</h4>
+        <p class="muted">Abra via link: <code>/reset-password?token=...</code></p>
+        <div class="grid2">
+          <div>
+            <label>Token</label>
+            <input id="resetToken" placeholder="token do reset" />
+          </div>
+          <div>
+            <label>Nova senha</label>
+            <input id="resetNewPassword" type="password" placeholder="mínimo 6 caracteres" />
+          </div>
+        </div>
+        <div class="row" style="margin-top: 12px;">
+          <button id="btnConfirmReset">Confirmar reset</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="appSection" class="hidden">
+      <div class="card" id="kpiSection">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+          <div>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <h3 style="margin:0;">Resultados</h3>
+              <span id="tlxStatus" class="pill premium hidden">TLX Premium</span>
+            </div>
+            <div class="muted" style="margin-top:6px;">O que gera dinheiro/status fica em destaque. O resto fica clean.</div>
+          </div>
+          <div class="muted" style="margin-top:6px;">Atualizado: <span id="kpiTs">—</span></div>
+        </div>
+
+        <div class="kpiGrid" style="margin-top:12px;">
+          <div class="kpi">
+            <div class="muted">Cliques</div>
+            <div class="kpiValue" id="kpiClicks">—</div>
+          </div>
+          <div class="kpi premium">
+            <div class="muted">Conversões</div>
+            <div class="kpiValue" id="kpiConversions">—</div>
+          </div>
+          <div class="kpi">
+            <div class="muted">CTR (proxy)</div>
+            <div class="kpiValue" id="kpiCtr">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Novo Anúncio</h3>
+        <div class="grid2">
+          <div>
+            <label>Título</label>
+            <input id="adTitle" placeholder="Título do anúncio" />
+          </div>
+          <div>
+            <label>Canal</label>
+            <select id="adChannel">
+              <option value="whatsapp">WhatsApp</option>
+              <option value="x">X (Twitter)</option>
+              <option value="email">Email</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top: 10px;">
+          <label>Texto</label>
+          <textarea id="adBody" placeholder="Escreva seu anúncio aqui..."></textarea>
+        </div>
+
+        <div style="margin-top: 10px;">
+          <label>URL (opcional)</label>
+          <input id="adUrl" placeholder="https://..." />
+        </div>
+
+        <div class="row" style="margin-top: 12px;">
+          <button id="btnCreateAd">Criar (Draft)</button>
+          <button id="btnRefresh">Atualizar Lista</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Meus Anúncios</h3>
+        <div id="adsList"></div>
+      </div>
+    </section>
+
+    <script src="./env.js"></script>
+    <script type="module" src="./dist/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "tlxauto",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TLXAUTO (frontend TS + backend Python)",
+  "scripts": {
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:preview": "npm --prefix frontend run preview"
+  }
+}

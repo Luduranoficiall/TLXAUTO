@@ -1,0 +1,110 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tlx_ads}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tlx_ads}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.103.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4318:4318"
+
+  api:
+    build:
+      context: ./tlx-ads/backend
+    environment:
+      # DB sqlite persistido em volume
+      TLX_ADS_DB_PATH: "/data/data.sqlite3"
+
+      # (upgrade futuro) Postgres URL, ainda não usado pelo backend atual
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/tlx_ads}
+
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_SUPER_SECRET}
+      PWD_SALT: ${PWD_SALT:-CHANGE_ME_PEPPER}
+      JWT_EXPIRES_MIN: ${JWT_EXPIRES_MIN:-240}
+
+      # Rate limit redis (multi-instância)
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
+
+      # Domínios (troque pro oficial depois, sem dor)
+      PUBLIC_WEB_BASE: ${PUBLIC_WEB_BASE:-http://localhost:5173}
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8000}
+
+      # Pixel allowlist
+      PIXEL_ALLOWED_ORIGINS: ${PIXEL_ALLOWED_ORIGINS:-http://localhost:5173}
+
+      # OTel export (OTLP/HTTP)
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-tlxauto-ads}
+
+      # DEV: retornar tokens/links nas respostas
+      DEV_RETURN_TOKEN_LINKS: ${DEV_RETURN_TOKEN_LINKS:-1}
+
+      # admin job
+      ADMIN_KEY: ${ADMIN_KEY:-CHANGE_ME_ADMIN_KEY}
+
+    ports:
+      - "8000:8000"
+    volumes:
+      - tlxadsdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./tlx-ads/backend
+    command: ["python", "/app/jobs/worker_loop.py"]
+    environment:
+      TLX_ADS_DB_PATH: "/data/data.sqlite3"
+      ADMIN_KEY: ${ADMIN_KEY:-CHANGE_ME_ADMIN_KEY}
+    volumes:
+      - tlxadsdata:/data
+    depends_on:
+      api:
+        condition: service_started
+
+  web:
+    build:
+      context: ./tlx-ads/frontend
+    environment:
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8000}
+      PUBLIC_WEB_BASE: ${PUBLIC_WEB_BASE:-http://localhost:5173}
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  tlxadsdata:
+  pgdata:
