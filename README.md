@@ -80,12 +80,32 @@ Na raiz do repositório:
 
 - `docker-compose up --build`
 
+### Profile DEV (expõe Postgres/Redis/OTel no host)
+
+Por padrão (modo “produção”), o `docker-compose.yml` mantém **Postgres/Redis/OTel apenas na rede interna** do Compose.
+
+Se você quiser expor portas no seu PC para usar ferramentas externas (DBeaver, Postman, etc.), suba com o profile `dev`:
+
+- `docker-compose --profile dev up --build`
+
+Isso expõe no host:
+
+- Postgres: `localhost:5432`
+- Redis: `localhost:6379`
+- OTel Collector (OTLP HTTP): `http://localhost:4318/v1/traces`
+
+### Profile EDGE (proxy / domínio / TLS)
+
+Para subir o reverse proxy opcional (Caddy):
+
+- `docker-compose --profile edge up --build`
+
 Serviços expostos:
 
 - Web (frontend): `http://localhost:5173`
 - API (Swagger): `http://localhost:8000/docs`
-- Redis: `localhost:6379`
-- OTel Collector (OTLP HTTP): `http://localhost:4318/v1/traces`
+- (DEV profile) Redis: `localhost:6379`
+- (DEV profile) OTel Collector (OTLP HTTP): `http://localhost:4318/v1/traces`
 
 > Postgres também sobe (`localhost:5432`) para o caminho de migração/RLS, mas o backend atual ainda usa SQLite. O volume do SQLite fica persistido em `tlxadsdata`.
 

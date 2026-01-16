@@ -7,8 +7,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-tlx_ads}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,10 +16,21 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # DEV ONLY: expõe Postgres na máquina host sem abrir porta no serviço real
+  # Uso: docker-compose --profile dev up
+  postgres-port:
+    image: alpine/socat:1.8.0.0
+    profiles: ["dev"]
+    command: ["-d", "-d", "TCP-LISTEN:5432,fork,reuseaddr", "TCP:postgres:5432"]
+    ports:
+      - "5432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   redis:
     image: redis:7
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -29,13 +38,35 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # DEV ONLY: expõe Redis na máquina host
+  redis-port:
+    image: alpine/socat:1.8.0.0
+    profiles: ["dev"]
+    command: ["-d", "-d", "TCP-LISTEN:6379,fork,reuseaddr", "TCP:redis:6379"]
+    ports:
+      - "6379:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   otel-collector:
     image: otel/opentelemetry-collector:0.103.0
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    restart: unless-stopped
+
+  # DEV ONLY: expõe OTLP HTTP no host (útil pra testes locais)
+  otel-port:
+    image: alpine/socat:1.8.0.0
+    profiles: ["dev"]
+    command: ["-d", "-d", "TCP-LISTEN:4318,fork,reuseaddr", "TCP:otel-collector:4318"]
     ports:
       - "4318:4318"
+    depends_on:
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   api:
