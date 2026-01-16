@@ -46,22 +46,29 @@ function qso(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
-function showOnly(section: "home" | "accept-invite" | "reset-password") {
+type Section = "home" | "accept-invite" | "reset-password" | "plans";
+
+function showOnly(section: Section) {
   // home = fluxo atual (auth+app)
-  qs("authSection").classList.toggle("hidden", section !== "home" || !!getToken());
-  qs("appSection").classList.toggle("hidden", section !== "home" || !getToken());
-  qs("btnLogout").classList.toggle("hidden", !getToken() || section !== "home");
+  const isHome = section === "home";
+  qs("authSection").classList.toggle("hidden", !isHome || !!getToken());
+  qs("appSection").classList.toggle("hidden", !isHome || !getToken());
+  qs("btnLogout").classList.toggle("hidden", !getToken() || !isHome);
 
   qs("acceptInviteSection").classList.toggle("hidden", section !== "accept-invite");
   qs("resetPasswordSection").classList.toggle("hidden", section !== "reset-password");
 
+  const plans = qso("plansSection");
+  if (plans) plans.classList.toggle("hidden", section !== "plans");
+
   syncUserInfo();
 }
 
-function route(): "home" | "accept-invite" | "reset-password" {
+function route(): Section {
   const path = window.location.pathname;
   if (path === "/accept-invite") return "accept-invite";
   if (path === "/reset-password") return "reset-password";
+  if (path === "/planos" || path === "/choose-plan") return "plans";
   return "home";
 }
 
@@ -158,6 +165,205 @@ function showApp(isAuthed: boolean) {
   qs("appSection").classList.toggle("hidden", !isAuthed);
   qs("btnLogout").classList.toggle("hidden", !isAuthed);
   syncUserInfo();
+}
+
+type PlanId = "free" | "pro" | "business" | "enterprise";
+
+type PlanSnapshot = {
+  tenant_id: number;
+  plan: PlanId;
+  status: string;
+  limits: {
+    ads_created_monthly: number | null;
+    templates_created_monthly: number | null;
+    links_created_monthly: number | null;
+    invites_created_monthly: number | null;
+    sends_daily_total: number | null;
+  };
+  usage: {
+    month: string;
+    ads_created: number;
+    templates_created: number;
+    links_created: number;
+    invites_created: number;
+    day: string;
+    sends_total: number;
+    sends_whatsapp: number;
+    sends_x: number;
+    sends_email: number;
+  };
+};
+
+type PlanDef = {
+  id: PlanId;
+  name: string;
+  price: string;
+  subtitle: string;
+  recommended?: boolean;
+};
+
+const PLAN_DEFS: PlanDef[] = [
+  {
+    id: "free",
+    name: "Free",
+    price: "R$ 0",
+    subtitle: "Para validar a operação com limites claros.",
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    price: "R$ 79/mês",
+    subtitle: "Para quem roda anúncios todo dia.",
+    recommended: true,
+  },
+  {
+    id: "business",
+    name: "Business",
+    price: "R$ 199/mês",
+    subtitle: "Para time / múltiplas campanhas e escala.",
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    price: "Sob consulta",
+    subtitle: "Operação grande, integrações e limites sob medida.",
+  },
+];
+
+function fmtLimit(v: number | null): string {
+  if (v === null) return "Ilimitado";
+  return String(v);
+}
+
+function fmtPct(current: number, limit: number | null): string {
+  if (limit === null) return "—";
+  const pct = limit <= 0 ? 0 : Math.min(1, current / limit);
+  return `${Math.round(pct * 100)}%`;
+}
+
+function renderPlanCard(def: PlanDef, snap?: PlanSnapshot | null): string {
+  const limits = snap?.limits;
+  const usage = snap?.usage;
+
+  // Se não tiver snapshot (não logado), usamos os limites do backend como referência “padrão”
+  // sem chamar API: valores batem com `tlx-ads/backend/saas.py`.
+  const DEFAULT_LIMITS: Record<PlanId, PlanSnapshot["limits"]> = {
+    free: { ads_created_monthly: 50, templates_created_monthly: 20, links_created_monthly: 200, invites_created_monthly: 20, sends_daily_total: 200 },
+    pro: { ads_created_monthly: 300, templates_created_monthly: 200, links_created_monthly: 2000, invites_created_monthly: 200, sends_daily_total: 2000 },
+    business: { ads_created_monthly: 2000, templates_created_monthly: 1000, links_created_monthly: 20000, invites_created_monthly: 2000, sends_daily_total: 20000 },
+    enterprise: { ads_created_monthly: null, templates_created_monthly: null, links_created_monthly: null, invites_created_monthly: null, sends_daily_total: null },
+  };
+
+  const l = DEFAULT_LIMITS[def.id];
+
+  const isCurrent = snap?.plan === def.id;
+  const css = ["planCard", def.recommended ? "recommended" : "", isCurrent ? "recommended" : ""]
+    .filter(Boolean)
+    .join(" ");
+
+  const badge = isCurrent
+    ? `<span class="pill premium">Seu plano atual</span>`
+    : def.recommended
+      ? `<span class="pill premium">Mais escolhido</span>`
+      : `<span class="pill">Plano</span>`;
+
+  const usageBlock =
+    snap && usage && limits
+      ? `
+        <div class="planHint">
+          Uso do mês (${escapeHtml(usage.month)}): anúncios ${usage.ads_created}/${fmtLimit(limits.ads_created_monthly)} (${fmtPct(
+            usage.ads_created,
+            limits.ads_created_monthly
+          )})
+        </div>
+      `
+      : ``;
+
+  return `
+    <div class="${css}" data-plan="${def.id}">
+      <div class="planTop">
+        <div>
+          <div class="planName">${escapeHtml(def.name)}</div>
+          <div class="planSub">${escapeHtml(def.subtitle)}</div>
+        </div>
+        <div>${badge}</div>
+      </div>
+
+      <div class="planPrice">${escapeHtml(def.price)}</div>
+
+      <ul class="planFeatures">
+        <li>• <strong>${fmtLimit(l.ads_created_monthly)}</strong> anúncios/mês <span class="muted">(criar drafts e campanhas)</span></li>
+        <li>• <strong>${fmtLimit(l.templates_created_monthly)}</strong> templates/mês <span class="muted">(padrão de copy)</span></li>
+        <li>• <strong>${fmtLimit(l.links_created_monthly)}</strong> links/mês <span class="muted">(encurtador + UTM)</span></li>
+        <li>• <strong>${fmtLimit(l.invites_created_monthly)}</strong> convites/mês <span class="muted">(equipe/cliente)</span></li>
+        <li>• <strong>${fmtLimit(l.sends_daily_total)}</strong> envios/dia <span class="muted">(WhatsApp/X/Email)</span></li>
+      </ul>
+
+      <div class="planCtaRow">
+        <button class="btn btn-secondary" data-action="choose-plan" data-plan="${def.id}">${isCurrent ? "Plano atual" : "Quero este plano"}</button>
+      </div>
+      ${usageBlock}
+    </div>
+  `;
+}
+
+async function refreshPlansUI() {
+  const grid = qso("plansGrid");
+  if (!grid) return;
+
+  let snap: PlanSnapshot | null = null;
+  const token = getToken();
+  if (token) {
+    try {
+      snap = await api<PlanSnapshot>("/saas/plan");
+    } catch {
+      // se falhar, continua com UI estática
+      snap = null;
+    }
+  }
+
+  const currentBox = qso("planCurrentBox");
+  if (currentBox) {
+    if (snap) {
+      currentBox.classList.remove("hidden");
+      currentBox.innerHTML = `
+        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:800;">Seu plano atual: <span class="pill premium">${escapeHtml(snap.plan.toUpperCase())}</span></div>
+            <div class="muted" style="margin-top:6px;">Status: <code>${escapeHtml(String(snap.status || "active"))}</code> — Tenant: <code>${escapeHtml(
+              String(snap.tenant_id)
+            )}</code></div>
+          </div>
+          <div class="muted" style="margin-top:6px;">Dia (UTC): <code>${escapeHtml(snap.usage.day)}</code></div>
+        </div>
+      `;
+    } else {
+      currentBox.classList.add("hidden");
+      currentBox.innerHTML = "";
+    }
+  }
+
+  grid.innerHTML = PLAN_DEFS.map((d) => renderPlanCard(d, snap)).join("");
+
+  // bind CTA
+  grid.querySelectorAll("button[data-action=choose-plan]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const plan = (btn as HTMLButtonElement).dataset.plan as PlanId;
+      localStorage.setItem("selected_plan", plan);
+
+      if (!getToken()) {
+        setAlert(`Plano selecionado: <strong>${escapeHtml(plan)}</strong>. Agora faça login/cadastro para continuar.`, "ok");
+        window.location.assign("/");
+        return;
+      }
+
+      // Ainda não existe fluxo de cobrança automático aqui.
+      setAlert(
+        `Plano selecionado: <strong>${escapeHtml(plan)}</strong>. Me diga o valor final de cada plano que você quer e eu ligo isso no backend (checkout/upgrade).`,
+        "ok"
+      );
+    });
+  });
 }
 
 async function acceptInvite() {
@@ -446,6 +652,11 @@ async function handleAdAction(action: string, id: number) {
     showOnly("reset-password");
     const token = getQueryParam("token");
     if (token) (qs("resetToken") as HTMLInputElement).value = token;
+    return;
+  }
+  if (r === "plans") {
+    showOnly("plans");
+    void refreshPlansUI();
     return;
   }
 

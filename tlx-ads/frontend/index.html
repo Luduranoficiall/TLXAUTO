@@ -259,6 +259,92 @@
         border-radius: 8px;
         border: 1px solid rgba(255, 255, 255, 0.06);
       }
+
+      /* Planos */
+      .planHero {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .planHero h3 { margin: 0; }
+
+      .planGrid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+      }
+      @media (max-width: 980px) { .planGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 640px) { .planGrid { grid-template-columns: 1fr; } }
+
+      .planCard {
+        border-radius: var(--radius);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 14px;
+        box-shadow: var(--shadow);
+        display:flex;
+        flex-direction: column;
+        min-height: 320px;
+      }
+      .planCard.recommended {
+        border-color: rgba(245, 179, 1, 0.35);
+        box-shadow: 0 12px 28px rgba(245, 179, 1, 0.10), var(--shadow);
+      }
+      .planTop {
+        display:flex;
+        justify-content:space-between;
+        gap: 10px;
+        align-items:flex-start;
+      }
+      .planName {
+        font-weight: 800;
+        font-size: 16px;
+        letter-spacing: 0.2px;
+      }
+      .planPrice {
+        margin-top: 8px;
+        font-size: 20px;
+        font-weight: 900;
+      }
+      .planSub {
+        margin-top: 4px;
+        color: rgba(237, 239, 243, 0.70);
+        font-size: 12px;
+      }
+      .planFeatures {
+        margin-top: 12px;
+        display:flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1 1 auto;
+      }
+      .planFeatures li {
+        list-style: none;
+        padding-left: 0;
+        color: rgba(237, 239, 243, 0.92);
+        line-height: 1.35;
+      }
+      .planFeatures li .muted { color: rgba(237, 239, 243, 0.60); }
+
+      .planCtaRow { margin-top: 12px; }
+      .planCtaRow button { width: 100%; }
+
+      .planHint {
+        margin-top: 10px;
+        font-size: 12px;
+        color: rgba(237, 239, 243, 0.65);
+      }
+
+      .planCurrent {
+        margin-top: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(10, 132, 255, 0.25);
+        background: rgba(10, 132, 255, 0.06);
+        padding: 12px;
+      }
     </style>
   </head>
   <body>
@@ -272,6 +358,7 @@
 
     <nav class="card">
       <a href="/" id="navHome">Home</a>
+      <a href="/planos" id="navPlans">Planos</a>
       <a href="/accept-invite" id="navAccept">Aceitar Convite</a>
       <a href="/reset-password" id="navReset">Reset de Senha</a>
       <span class="muted" style="float:right;">API: <code id="apiBaseLabel"></code></span>
@@ -357,6 +444,27 @@
         <div class="row" style="margin-top: 12px;">
           <button id="btnConfirmReset">Confirmar reset</button>
         </div>
+      </div>
+    </section>
+
+    <section id="plansSection" class="card hidden">
+      <div class="planHero">
+        <div>
+          <h3>Planos — TLXAUTO Ads</h3>
+          <div class="muted" style="margin-top:6px;">
+            Escolha o plano ideal para sua operação de anúncios. Os limites abaixo são claros (sem pegadinha) e ajudam a manter a performance.
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <span class="pill">Foco: anúncios + templates + links</span>
+          <span class="pill premium">Upgrade quando precisar</span>
+        </div>
+      </div>
+
+      <div id="planCurrentBox" class="planCurrent hidden"></div>
+      <div id="plansGrid" class="planGrid"></div>
+      <div class="planHint">
+        Dica: você pode começar no <strong>Free</strong> e subir de plano quando bater nos limites.
       </div>
     </section>
 
