@@ -16,6 +16,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    restart: unless-stopped
 
   redis:
     image: redis:7
@@ -26,6 +27,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    restart: unless-stopped
 
   otel-collector:
     image: otel/opentelemetry-collector:0.103.0
@@ -34,6 +36,7 @@ services:
       - ./otel/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
     ports:
       - "4318:4318"
+    restart: unless-stopped
 
   api:
     build:
@@ -79,6 +82,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    stop_grace_period: 20s
 
   worker:
     build:
@@ -91,7 +101,9 @@ services:
       - tlxadsdata:/data
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 20s
 
   web:
     build:
@@ -104,7 +116,33 @@ services:
     depends_on:
       api:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+  edge:
+    image: caddy:2-alpine
+    profiles: ["edge"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_started
+    restart: unless-stopped
 
 volumes:
   tlxadsdata:
   pgdata:
+  caddy_data:
+  caddy_config:

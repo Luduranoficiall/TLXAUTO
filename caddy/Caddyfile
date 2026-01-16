@@ -1,0 +1,14 @@
+{
+	# Em produção, você pode trocar ":80" por "seu-dominio.com" e remover esta linha
+	# para habilitar HTTPS automático.
+	auto_https off
+}
+
+:80 {
+	# API (mantém /docs, /openapi.json etc)
+	@api path /api/* /docs* /openapi.json /redoc* /health
+	reverse_proxy @api api:8000
+
+	# SPA
+	reverse_proxy web:5173
+}
