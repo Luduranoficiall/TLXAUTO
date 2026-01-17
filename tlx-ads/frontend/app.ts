@@ -308,8 +308,21 @@ async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const base = env().PUBLIC_API_BASE;
-  const res = await fetch(`${base}${path}`, { ...opts, headers });
-  const text = await res.text();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  let res: Response;
+  let text = "";
+  try {
+    res = await fetch(`${base}${path}`, { ...opts, headers, signal: controller.signal });
+    text = await res.text();
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error("Tempo limite. Tente novamente.");
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   let data: any = null;
   try {

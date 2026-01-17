@@ -104,6 +104,9 @@ services:
       # admin job
       ADMIN_KEY: ${ADMIN_KEY:-CHANGE_ME_ADMIN_KEY}
 
+      # automação
+      AUTOMATION_MAX_BATCH: ${AUTOMATION_MAX_BATCH:-500}
+
       # Stripe (assinaturas em USD)
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}

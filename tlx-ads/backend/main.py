@@ -1142,6 +1142,7 @@ def automation_segment_send(data: AutomationSegmentSendIn, ctx: dict = Depends(r
     variables = data.variables or {}
     body = data.body
 
+    max_batch = int(os.getenv("AUTOMATION_MAX_BATCH", "500"))
     with get_db() as db:
         seg = db.execute(
             "SELECT id FROM segments WHERE id = ? AND tenant_id = ?",
@@ -1178,6 +1179,8 @@ def automation_segment_send(data: AutomationSegmentSendIn, ctx: dict = Depends(r
             """,
             (int(data.segment_id), int(tenant_id)),
         ).fetchall()
+        if len(contacts) > max_batch:
+            raise HTTPException(status_code=400, detail=f"Segmento muito grande. Limite atual: {max_batch}")
 
         queued = 0
         failed = 0
