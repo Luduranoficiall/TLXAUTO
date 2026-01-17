@@ -56,6 +56,7 @@ type Contact = {
   email?: string | null;
   phone?: string | null;
   consent_at?: string | null;
+  meta_json?: string | null;
 };
 
 type Segment = {
@@ -1147,11 +1148,22 @@ function renderContactsTable(contacts: Contact[]): string {
       const name = c.name ? escapeHtml(String(c.name)) : "—";
       const email = c.email ? escapeHtml(String(c.email)) : "—";
       const phone = c.phone ? escapeHtml(String(c.phone)) : "—";
+      let tags = "—";
+      if (c.meta_json) {
+        try {
+          const parsed = JSON.parse(String(c.meta_json));
+          const list = Array.isArray(parsed?.tags) ? parsed.tags : [];
+          if (list.length) tags = escapeHtml(list.join(", "));
+        } catch {
+          // ignore invalid meta
+        }
+      }
       return `
         <tr>
           <td>${name}</td>
           <td>${email}</td>
           <td>${phone}</td>
+          <td>${tags}</td>
           <td>
             <button class="btn btn-secondary" data-action="contact-edit" data-id="${c.id}">Editar</button>
             <button class="btn btn-danger" data-action="contact-delete" data-id="${c.id}">Excluir</button>
@@ -1235,6 +1247,17 @@ async function refreshCrm() {
           const email = prompt("Email", contact.email || "") ?? "";
           const phone = prompt("Telefone", contact.phone || "") ?? "";
           const consent_at = prompt("Consentimento (ISO 8601)", contact.consent_at || "") ?? "";
+          let tags = "";
+          if (contact.meta_json) {
+            try {
+              const parsed = JSON.parse(String(contact.meta_json));
+              if (Array.isArray(parsed?.tags)) tags = parsed.tags.join(", ");
+            } catch {
+              // ignore
+            }
+          }
+          const tagsRaw = prompt("Tags (separadas por virgula)", tags) ?? "";
+          const tagsList = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
           await api(`/contacts/${id}`, {
             method: "PATCH",
             body: JSON.stringify({
@@ -1242,6 +1265,7 @@ async function refreshCrm() {
               email: email || undefined,
               phone: phone || undefined,
               consent_at: consent_at || undefined,
+              meta: tagsList.length ? { tags: tagsList } : undefined,
             }),
           });
           setAlert("Contato atualizado.");
@@ -1434,17 +1458,25 @@ async function createContact() {
   const email = (qso("contactEmail") as HTMLInputElement | null)?.value.trim() || "";
   const phone = (qso("contactPhone") as HTMLInputElement | null)?.value.trim() || "";
   const consent_at = (qso("contactConsent") as HTMLInputElement | null)?.value.trim() || undefined;
+  const tagsRaw = (qso("contactTags") as HTMLInputElement | null)?.value.trim() || "";
   if (!email && !phone) {
     setAlert("Informe email ou telefone.", "danger");
     return;
   }
+  const tags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [];
   try {
     await api<Contact>("/contacts", {
       method: "POST",
-      body: JSON.stringify({ name, email: email || undefined, phone: phone || undefined, consent_at }),
+      body: JSON.stringify({
+        name,
+        email: email || undefined,
+        phone: phone || undefined,
+        consent_at,
+        meta: tags.length ? { tags } : undefined,
+      }),
     });
     setAlert("Contato criado.");
-    const fields = ["contactName", "contactEmail", "contactPhone", "contactConsent"];
+    const fields = ["contactName", "contactEmail", "contactPhone", "contactConsent", "contactTags"];
     fields.forEach((id) => {
       const el = qso(id) as HTMLInputElement | null;
       if (el) el.value = "";
@@ -1534,16 +1566,26 @@ function exportContactsCsv() {
     return;
   }
   const rows = [
-    ["id", "name", "email", "phone", "consent_at"].join(","),
-    ...contactsCache.map((c) =>
-      [
+    ["id", "name", "email", "phone", "consent_at", "tags"].join(","),
+    ...contactsCache.map((c) => {
+      let tags = "";
+      if (c.meta_json) {
+        try {
+          const parsed = JSON.parse(String(c.meta_json));
+          if (Array.isArray(parsed?.tags)) tags = parsed.tags.join("|");
+        } catch {
+          // ignore
+        }
+      }
+      return [
         c.id,
         `"${String(c.name || "").replace(/\"/g, '""')}"`,
         `"${String(c.email || "").replace(/\"/g, '""')}"`,
         `"${String(c.phone || "").replace(/\"/g, '""')}"`,
         `"${String(c.consent_at || "").replace(/\"/g, '""')}"`,
-      ].join(",")
-    ),
+        `"${String(tags).replace(/\"/g, '""')}"`,
+      ].join(",");
+    }),
   ];
   const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
