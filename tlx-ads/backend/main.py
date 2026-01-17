@@ -505,6 +505,75 @@ def billing_portal(ctx: dict = Depends(require_ctx)):
     return {"url": session.url}
 
 
+@app.post("/billing/change-plan", response_model=PlanCheckoutOut)
+def billing_change_plan(data: PlanCheckoutIn, ctx: dict = Depends(require_ctx)):
+    plan = str(data.plan or "").strip().lower()
+    if plan not in ("free", "pro", "business"):
+        raise HTTPException(status_code=400, detail="Plano invalido")
+
+    _stripe_init()
+    price_id = _price_id_for_plan(plan)
+    if not price_id:
+        raise HTTPException(status_code=400, detail="Stripe price id nao configurado")
+
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    with get_db() as db:
+        stripe_customer_id, stripe_subscription_id = get_stripe_refs(db, tenant_id)
+
+    if not stripe_subscription_id:
+        # sem assinatura, cria checkout
+        return billing_checkout_session(data, ctx)
+
+    sub = stripe.Subscription.retrieve(stripe_subscription_id)
+    items = sub.get("items", {}).get("data", [])
+    if not items:
+        raise HTTPException(status_code=400, detail="Assinatura sem itens")
+    item_id = items[0].get("id")
+
+    stripe.Subscription.modify(
+        stripe_subscription_id,
+        cancel_at_period_end=False,
+        proration_behavior="create_prorations",
+        items=[{"id": item_id, "price": price_id}],
+    )
+
+    with get_db() as db:
+        set_plan(db, tenant_id, plan, "active", current_period_end=_unix_to_iso(sub.get("current_period_end")), stripe_customer_id=stripe_customer_id, stripe_subscription_id=stripe_subscription_id)
+
+    return {"url": f"{_public_web_base()}/planos?success=1"}
+
+
+@app.post("/billing/cancel", response_model=PlanCheckoutOut)
+def billing_cancel(ctx: dict = Depends(require_ctx)):
+    _stripe_init()
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    with get_db() as db:
+        stripe_customer_id, stripe_subscription_id = get_stripe_refs(db, tenant_id)
+    if not stripe_subscription_id:
+        raise HTTPException(status_code=400, detail="Assinatura nao encontrada")
+
+    sub = stripe.Subscription.modify(stripe_subscription_id, cancel_at_period_end=True)
+    items = sub.get("items", {}).get("data", [])
+    price_id = items[0].get("price", {}).get("id") if items else ""
+    plan = _plan_for_price_id(price_id) or "free"
+    with get_db() as db:
+        set_plan(
+            db,
+            tenant_id,
+            plan,
+            "canceled",
+            current_period_end=_unix_to_iso(sub.get("current_period_end")),
+            stripe_customer_id=stripe_customer_id,
+            stripe_subscription_id=stripe_subscription_id,
+        )
+
+    return {"url": f"{_public_web_base()}/planos?canceled=1"}
+
+
 @app.post("/stripe/webhook")
 async def stripe_webhook(request: Request):
     if not _stripe_enabled():
@@ -1433,6 +1502,7 @@ def list_ads(
     ctx: dict = Depends(require_ctx),
     status: Optional[str] = Query(default=None, max_length=20),
     channel: Optional[str] = Query(default=None, max_length=40),
+    campaign_id: Optional[int] = Query(default=None),
     q: Optional[str] = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -1452,6 +1522,9 @@ def list_ads(
     if channel:
         where.append("channel = ?")
         params.append(channel)
+    if campaign_id is not None:
+        where.append("campaign_id = ?")
+        params.append(int(campaign_id))
     if q:
         where.append("(title LIKE ? OR body LIKE ?)")
         like = f"%{q}%"

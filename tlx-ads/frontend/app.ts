@@ -473,6 +473,7 @@ function renderPlanCard(def: PlanDef, snap?: PlanSnapshot | null): string {
 
       <div class="planCtaRow">
         <button class="btn btn-secondary" data-action="choose-plan" data-plan="${def.id}">${isCurrent ? "Plano atual" : "Assinar este plano"}</button>
+        ${snap && !isCurrent && def.id !== "enterprise" ? `<button class="btn ghostBtn" data-action="change-plan" data-plan="${def.id}">Alterar para este plano</button>` : ""}
       </div>
       ${usageBlock}
     </div>
@@ -486,7 +487,9 @@ async function refreshPlansUI() {
   let snap: PlanSnapshot | null = null;
   const token = getToken();
   const portalBtn = qso("btnBillingPortal");
+  const cancelBtn = qso("btnCancelPlan");
   if (portalBtn) portalBtn.classList.toggle("hidden", !token);
+  if (cancelBtn) cancelBtn.classList.toggle("hidden", !token);
   if (token) {
     try {
       snap = await api<PlanSnapshot>("/saas/plan");
@@ -549,6 +552,30 @@ async function refreshPlansUI() {
         else setAlert("Nao foi possivel iniciar o checkout.", "danger");
       } catch (e: any) {
         setAlert(e.message || "Falha ao iniciar checkout.", "danger");
+      }
+    });
+  });
+
+  grid.querySelectorAll("button[data-action=change-plan]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const plan = (btn as HTMLButtonElement).dataset.plan as PlanId;
+      if (!getToken()) {
+        setAlert("Faca login para alterar o plano.", "danger");
+        return;
+      }
+      if (plan === "enterprise") {
+        setAlert("Plano Enterprise: fale com o comercial.", "ok");
+        return;
+      }
+      try {
+        const out = await api<{ url: string }>("/billing/change-plan", {
+          method: "POST",
+          body: JSON.stringify({ plan }),
+        });
+        if (out?.url) window.location.assign(out.url);
+        else setAlert("Plano alterado.", "ok");
+      } catch (e: any) {
+        setAlert(e.message || "Falha ao alterar plano.", "danger");
       }
     });
   });
@@ -936,13 +963,14 @@ function updateTemplateSelects() {
 }
 
 function updateCampaignSelects() {
-  const selectIds = ["adCampaignId", "autoCampaignId"];
+  const selectIds = ["adCampaignId", "autoCampaignId", "adsCampaign"];
   selectIds.forEach((id) => {
     const select = qso(id) as HTMLSelectElement | null;
     if (!select) return;
     const current = select.value;
+    const emptyLabel = id === "adsCampaign" ? "Todas" : "Sem campanha";
     select.innerHTML =
-      `<option value="">Sem campanha</option>` +
+      `<option value="">${emptyLabel}</option>` +
       campaignsCache.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
     if (current) select.value = current;
   });
@@ -1597,6 +1625,7 @@ type AdsFilters = {
   q: string;
   status: string;
   channel: string;
+  campaign_id: string;
   limit: number;
   offset: number;
 };
@@ -1610,7 +1639,8 @@ function getAdsFilters(): AdsFilters {
   const q = (qso("adsSearch") as HTMLInputElement | null)?.value?.trim() || "";
   const status = (qso("adsStatus") as HTMLSelectElement | null)?.value || "";
   const channel = (qso("adsChannel") as HTMLSelectElement | null)?.value || "";
-  return { q, status, channel, limit: ADS_PAGE_SIZE, offset: adsOffset };
+  const campaign_id = (qso("adsCampaign") as HTMLSelectElement | null)?.value || "";
+  return { q, status, channel, campaign_id, limit: ADS_PAGE_SIZE, offset: adsOffset };
 }
 
 function updateAdsSummary(ads: Ad[]) {
@@ -1657,6 +1687,7 @@ async function refreshAds(opts?: { append?: boolean }) {
     if (filters.q) params.set("q", filters.q);
     if (filters.status) params.set("status", filters.status);
     if (filters.channel) params.set("channel", filters.channel);
+    if (filters.campaign_id) params.set("campaign_id", filters.campaign_id);
 
     const ads = await api<Ad[]>(`/ads?${params.toString()}`);
     const list = qs("adsList");
@@ -1823,9 +1854,11 @@ async function handleAdAction(action: string, id: number) {
   const s = qso("adsSearch") as HTMLInputElement | null;
   const status = qso("adsStatus") as HTMLSelectElement | null;
   const channel = qso("adsChannel") as HTMLSelectElement | null;
+  const campaign = qso("adsCampaign") as HTMLSelectElement | null;
   if (s) s.value = "";
   if (status) status.value = "";
   if (channel) channel.value = "";
+  if (campaign) campaign.value = "";
   void refreshAds();
 });
 
@@ -1838,6 +1871,7 @@ qso("adsSearch")?.addEventListener("input", () => {
 });
 qso("adsStatus")?.addEventListener("change", () => void refreshAds());
 qso("adsChannel")?.addEventListener("change", () => void refreshAds());
+qso("adsCampaign")?.addEventListener("change", () => void refreshAds());
 (qso("btnBillingPortal") as HTMLButtonElement | null)?.addEventListener("click", async () => {
   if (!getToken()) {
     setAlert("Faca login para gerenciar sua assinatura.", "danger");
@@ -1849,6 +1883,20 @@ qso("adsChannel")?.addEventListener("change", () => void refreshAds());
     else setAlert("Nao foi possivel abrir o portal.", "danger");
   } catch (e: any) {
     setAlert(e.message || "Falha ao abrir portal.", "danger");
+  }
+});
+(qso("btnCancelPlan") as HTMLButtonElement | null)?.addEventListener("click", async () => {
+  if (!getToken()) {
+    setAlert("Faca login para cancelar sua assinatura.", "danger");
+    return;
+  }
+  if (!confirm("Cancelar assinatura no fim do ciclo?")) return;
+  try {
+    const out = await api<{ url: string }>("/billing/cancel", { method: "POST" });
+    if (out?.url) window.location.assign(out.url);
+    else setAlert("Cancelamento solicitado.", "ok");
+  } catch (e: any) {
+    setAlert(e.message || "Falha ao cancelar assinatura.", "danger");
   }
 });
 
