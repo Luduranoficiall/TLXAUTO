@@ -26,25 +26,25 @@ class PlanLimits:
 
 LIMITS_BY_PLAN: dict[str, PlanLimits] = {
     PLAN_FREE: PlanLimits(
-        ads_created_monthly=50,
-        templates_created_monthly=20,
-        links_created_monthly=200,
-        invites_created_monthly=20,
-        sends_daily_total=200,
+        ads_created_monthly=120,
+        templates_created_monthly=60,
+        links_created_monthly=800,
+        invites_created_monthly=40,
+        sends_daily_total=600,
     ),
     PLAN_PRO: PlanLimits(
-        ads_created_monthly=300,
-        templates_created_monthly=200,
-        links_created_monthly=2000,
+        ads_created_monthly=600,
+        templates_created_monthly=240,
+        links_created_monthly=4000,
         invites_created_monthly=200,
-        sends_daily_total=2000,
+        sends_daily_total=3000,
     ),
     PLAN_BUSINESS: PlanLimits(
-        ads_created_monthly=2000,
+        ads_created_monthly=2500,
         templates_created_monthly=1000,
-        links_created_monthly=20000,
-        invites_created_monthly=2000,
-        sends_daily_total=20000,
+        links_created_monthly=25000,
+        invites_created_monthly=1000,
+        sends_daily_total=15000,
     ),
     PLAN_ENTERPRISE: PlanLimits(
         ads_created_monthly=None,
@@ -93,6 +93,51 @@ def get_plan(db, tenant_id: int) -> tuple[str, str]:
     plan = str(row["plan"] or PLAN_FREE)
     status = str(row["status"] or "active")
     return (plan, status)
+
+
+def get_stripe_refs(db, tenant_id: int) -> tuple[Optional[str], Optional[str]]:
+    ensure_plan_row(db, tenant_id)
+    row = db.execute(
+        "SELECT stripe_customer_id, stripe_subscription_id FROM tenant_plans WHERE tenant_id = ?",
+        (int(tenant_id),),
+    ).fetchone()
+    if not row:
+        return (None, None)
+    return (row["stripe_customer_id"], row["stripe_subscription_id"])
+
+
+def set_plan(
+    db,
+    tenant_id: int,
+    plan: str,
+    status: str,
+    current_period_end: Optional[str] = None,
+    stripe_customer_id: Optional[str] = None,
+    stripe_subscription_id: Optional[str] = None,
+) -> None:
+    ensure_plan_row(db, tenant_id)
+    ts = now_iso()
+    db.execute(
+        """
+        UPDATE tenant_plans
+        SET plan = ?,
+            status = ?,
+            current_period_end = ?,
+            stripe_customer_id = COALESCE(?, stripe_customer_id),
+            stripe_subscription_id = COALESCE(?, stripe_subscription_id),
+            updated_at = ?
+        WHERE tenant_id = ?
+        """,
+        (
+            str(plan or PLAN_FREE),
+            str(status or "active"),
+            current_period_end,
+            stripe_customer_id,
+            stripe_subscription_id,
+            ts,
+            int(tenant_id),
+        ),
+    )
 
 
 def _ensure_usage_month_row(db, tenant_id: int, month: str) -> None:

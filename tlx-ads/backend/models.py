@@ -22,6 +22,14 @@ class TokenOut(BaseModel):
     role: Optional[str] = None
 
 
+class PlanCheckoutIn(BaseModel):
+    plan: str = Field(min_length=2, max_length=40)
+
+
+class PlanCheckoutOut(BaseModel):
+    url: str
+
+
 class MeOut(BaseModel):
     id: int
     email: str

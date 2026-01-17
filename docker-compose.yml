@@ -104,6 +104,16 @@ services:
       # admin job
       ADMIN_KEY: ${ADMIN_KEY:-CHANGE_ME_ADMIN_KEY}
 
+      # Stripe (assinaturas em USD)
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_FREE: ${STRIPE_PRICE_FREE:-}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+      STRIPE_PRICE_BUSINESS: ${STRIPE_PRICE_BUSINESS:-}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL:-http://localhost:5173/planos?success=1}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL:-http://localhost:5173/planos?canceled=1}
+      STRIPE_BILLING_PORTAL_RETURN_URL: ${STRIPE_BILLING_PORTAL_RETURN_URL:-http://localhost:5173/planos}
+
     ports:
       - "8000:8000"
     volumes:

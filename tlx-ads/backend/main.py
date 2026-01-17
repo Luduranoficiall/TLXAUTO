@@ -4,6 +4,10 @@ from typing import List, Optional
 import sqlite3
 
 import os
+try:
+    import stripe
+except Exception:  # pragma: no cover
+    stripe = None
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +51,8 @@ from models import (
     TemplateCreateIn,
     TemplateOut,
     TokenOut,
+    PlanCheckoutIn,
+    PlanCheckoutOut,
 )
 
 from audit import write_audit
@@ -64,6 +70,8 @@ from saas import (
     increment_daily_send,
     increment_monthly_resource,
     plan_snapshot,
+    set_plan,
+    get_stripe_refs,
 )
 
 from otel import setup_otel
@@ -158,6 +166,68 @@ def _env_truthy(name: str) -> bool:
 
 def _public_web_base() -> str:
     return (os.getenv("PUBLIC_WEB_BASE") or os.getenv("PUBLIC_BASE_URL") or "http://localhost:5173").rstrip("/")
+
+
+PLAN_PRICE_ENV = {
+    "free": "STRIPE_PRICE_FREE",
+    "pro": "STRIPE_PRICE_PRO",
+    "business": "STRIPE_PRICE_BUSINESS",
+}
+
+
+def _stripe_enabled() -> bool:
+    return bool((os.getenv("STRIPE_SECRET_KEY") or "").strip()) and stripe is not None
+
+
+def _stripe_init() -> None:
+    if stripe is None:
+        raise HTTPException(status_code=500, detail="Stripe library not installed")
+    key = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="Stripe not configured")
+    stripe.api_key = key
+
+
+def _price_id_for_plan(plan: str) -> Optional[str]:
+    env = PLAN_PRICE_ENV.get(str(plan or "").strip().lower())
+    if not env:
+        return None
+    return (os.getenv(env) or "").strip() or None
+
+
+def _plan_for_price_id(price_id: str) -> Optional[str]:
+    pid = str(price_id or "").strip()
+    for plan, env in PLAN_PRICE_ENV.items():
+        if (os.getenv(env) or "").strip() == pid:
+            return plan
+    return None
+
+
+def _normalize_plan_status(value: str) -> str:
+    v = str(value or "active").strip().lower()
+    if v in ("active", "trialing", "past_due", "canceled"):
+        return v
+    if v in ("incomplete", "unpaid", "incomplete_expired"):
+        return "past_due"
+    return "active"
+
+
+def _unix_to_iso(ts: Optional[int]) -> Optional[str]:
+    if not ts:
+        return None
+    return datetime.fromtimestamp(int(ts), timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _find_tenant_by_stripe(db, subscription_id: Optional[str], customer_id: Optional[str]) -> int:
+    sub = str(subscription_id or "").strip()
+    cust = str(customer_id or "").strip()
+    if not sub and not cust:
+        return 0
+    row = db.execute(
+        "SELECT tenant_id FROM tenant_plans WHERE stripe_subscription_id = ? OR stripe_customer_id = ?",
+        (sub, cust),
+    ).fetchone()
+    return int(row[0]) if row else 0
 
 
 PIXEL_GIF_BYTES = (
@@ -360,6 +430,141 @@ def saas_plan(ctx: dict = Depends(require_ctx)):
 
     with get_db() as db:
         return plan_snapshot(db, tenant_id)
+
+
+@app.post("/billing/checkout-session", response_model=PlanCheckoutOut)
+def billing_checkout_session(data: PlanCheckoutIn, ctx: dict = Depends(require_ctx)):
+    plan = str(data.plan or "").strip().lower()
+    if plan not in ("free", "pro", "business"):
+        raise HTTPException(status_code=400, detail="Plano invalido")
+
+    _stripe_init()
+    price_id = _price_id_for_plan(plan)
+    if not price_id:
+        raise HTTPException(status_code=400, detail="Stripe price id nao configurado")
+
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    with get_db() as db:
+        stripe_customer_id, _ = get_stripe_refs(db, tenant_id)
+
+    success_url = (os.getenv("STRIPE_SUCCESS_URL") or f"{_public_web_base()}/planos?success=1").strip()
+    cancel_url = (os.getenv("STRIPE_CANCEL_URL") or f"{_public_web_base()}/planos?canceled=1").strip()
+
+    session_params: dict = {
+        "mode": "subscription",
+        "line_items": [{"price": price_id, "quantity": 1}],
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "client_reference_id": f"tenant:{tenant_id}",
+        "metadata": {"tenant_id": str(tenant_id), "user_id": str(ctx.get("user_id")), "plan": plan},
+        "subscription_data": {"metadata": {"tenant_id": str(tenant_id), "user_id": str(ctx.get("user_id")), "plan": plan}},
+        "allow_promotion_codes": True,
+    }
+    if stripe_customer_id:
+        session_params["customer"] = stripe_customer_id
+    else:
+        session_params["customer_email"] = str(ctx.get("email") or "")
+
+    session = stripe.checkout.Session.create(**session_params)
+    if not session or not session.url:
+        raise HTTPException(status_code=500, detail="Stripe checkout nao disponivel")
+    return {"url": session.url}
+
+
+@app.post("/billing/portal", response_model=PlanCheckoutOut)
+def billing_portal(ctx: dict = Depends(require_ctx)):
+    _stripe_init()
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    with get_db() as db:
+        stripe_customer_id, _ = get_stripe_refs(db, tenant_id)
+    if not stripe_customer_id:
+        raise HTTPException(status_code=400, detail="Cliente Stripe nao encontrado")
+
+    return_url = (os.getenv("STRIPE_BILLING_PORTAL_RETURN_URL") or f"{_public_web_base()}/planos").strip()
+    session = stripe.billing_portal.Session.create(customer=stripe_customer_id, return_url=return_url)
+    if not session or not session.url:
+        raise HTTPException(status_code=500, detail="Portal Stripe indisponivel")
+    return {"url": session.url}
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    if not _stripe_enabled():
+        raise HTTPException(status_code=400, detail="Stripe webhook not configured")
+
+    secret = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
+    if not secret:
+        raise HTTPException(status_code=400, detail="Stripe webhook secret missing")
+
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature")
+    if not sig:
+        raise HTTPException(status_code=400, detail="Missing stripe-signature")
+
+    _stripe_init()
+    try:
+        event = stripe.Webhook.construct_event(payload=payload, sig_header=sig, secret=secret)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature")
+
+    if hasattr(event, "to_dict"):
+        event = event.to_dict()  # type: ignore
+
+    event_type = str(event.get("type") or "")
+    event_id = str(event.get("id") or "")
+
+    with get_db() as db:
+        if event_id:
+            row = db.execute("SELECT id FROM stripe_events WHERE id = ?", (event_id,)).fetchone()
+            if row:
+                return {"ok": True}
+            db.execute("INSERT INTO stripe_events (id, type, created_at) VALUES (?, ?, ?)", (event_id, event_type, now_iso()))
+
+        if event_type in ("customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"):
+            sub = event.get("data", {}).get("object", {})
+            items = sub.get("items", {}).get("data", [])
+            price_id = items[0].get("price", {}).get("id") if items else ""
+            plan = _plan_for_price_id(price_id) or str(sub.get("metadata", {}).get("plan") or "free")
+            tenant_id = int(sub.get("metadata", {}).get("tenant_id") or 0)
+            customer_id = sub.get("customer")
+            subscription_id = sub.get("id")
+
+            if tenant_id <= 0:
+                tenant_id = _find_tenant_by_stripe(db, subscription_id, customer_id)
+            if tenant_id > 0:
+                status = _normalize_plan_status(sub.get("status") or "active")
+                current_period_end = _unix_to_iso(sub.get("current_period_end"))
+                set_plan(
+                    db,
+                    tenant_id,
+                    plan,
+                    status,
+                    current_period_end=current_period_end,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                )
+
+        if event_type == "checkout.session.completed":
+            session = event.get("data", {}).get("object", {})
+            if session.get("mode") == "subscription":
+                tenant_id = int(session.get("metadata", {}).get("tenant_id") or 0)
+                if tenant_id > 0:
+                    plan = str(session.get("metadata", {}).get("plan") or "free")
+                    set_plan(
+                        db,
+                        tenant_id,
+                        plan,
+                        "active",
+                        current_period_end=None,
+                        stripe_customer_id=session.get("customer"),
+                        stripe_subscription_id=session.get("subscription"),
+                    )
+
+    return {"ok": True}
 
 
 @app.get("/campaigns", response_model=List[CampaignOut])

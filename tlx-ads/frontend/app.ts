@@ -62,6 +62,7 @@ function showOnly(section: Section) {
   if (plans) plans.classList.toggle("hidden", section !== "plans");
 
   syncUserInfo();
+  updateNav();
 }
 
 function route(): Section {
@@ -165,6 +166,7 @@ function showApp(isAuthed: boolean) {
   qs("appSection").classList.toggle("hidden", !isAuthed);
   qs("btnLogout").classList.toggle("hidden", !isAuthed);
   syncUserInfo();
+  updateNav();
 }
 
 type PlanId = "free" | "pro" | "business" | "enterprise";
@@ -205,28 +207,28 @@ type PlanDef = {
 const PLAN_DEFS: PlanDef[] = [
   {
     id: "free",
-    name: "Free",
-    price: "R$ 0",
-    subtitle: "Para validar a operação com limites claros.",
+    name: "Essencial",
+    price: "US$ 49/mo",
+    subtitle: "Para começar a rodar campanhas com foco em ROI.",
   },
   {
     id: "pro",
-    name: "Pro",
-    price: "R$ 79/mês",
-    subtitle: "Para quem roda anúncios todo dia.",
+    name: "Profissional",
+    price: "US$ 129/mo",
+    subtitle: "Para quem opera anuncios com consistencia semanal.",
     recommended: true,
   },
   {
     id: "business",
-    name: "Business",
-    price: "R$ 199/mês",
-    subtitle: "Para time / múltiplas campanhas e escala.",
+    name: "Agencia",
+    price: "US$ 249/mo",
+    subtitle: "Para multiplos clientes e performance em escala.",
   },
   {
     id: "enterprise",
     name: "Enterprise",
     price: "Sob consulta",
-    subtitle: "Operação grande, integrações e limites sob medida.",
+    subtitle: "Operacao grande, integrações e limites sob medida.",
   },
 ];
 
@@ -248,9 +250,9 @@ function renderPlanCard(def: PlanDef, snap?: PlanSnapshot | null): string {
   // Se não tiver snapshot (não logado), usamos os limites do backend como referência “padrão”
   // sem chamar API: valores batem com `tlx-ads/backend/saas.py`.
   const DEFAULT_LIMITS: Record<PlanId, PlanSnapshot["limits"]> = {
-    free: { ads_created_monthly: 50, templates_created_monthly: 20, links_created_monthly: 200, invites_created_monthly: 20, sends_daily_total: 200 },
-    pro: { ads_created_monthly: 300, templates_created_monthly: 200, links_created_monthly: 2000, invites_created_monthly: 200, sends_daily_total: 2000 },
-    business: { ads_created_monthly: 2000, templates_created_monthly: 1000, links_created_monthly: 20000, invites_created_monthly: 2000, sends_daily_total: 20000 },
+    free: { ads_created_monthly: 120, templates_created_monthly: 60, links_created_monthly: 800, invites_created_monthly: 40, sends_daily_total: 600 },
+    pro: { ads_created_monthly: 600, templates_created_monthly: 240, links_created_monthly: 4000, invites_created_monthly: 200, sends_daily_total: 3000 },
+    business: { ads_created_monthly: 2500, templates_created_monthly: 1000, links_created_monthly: 25000, invites_created_monthly: 1000, sends_daily_total: 15000 },
     enterprise: { ads_created_monthly: null, templates_created_monthly: null, links_created_monthly: null, invites_created_monthly: null, sends_daily_total: null },
   };
 
@@ -300,7 +302,7 @@ function renderPlanCard(def: PlanDef, snap?: PlanSnapshot | null): string {
       </ul>
 
       <div class="planCtaRow">
-        <button class="btn btn-secondary" data-action="choose-plan" data-plan="${def.id}">${isCurrent ? "Plano atual" : "Quero este plano"}</button>
+        <button class="btn btn-secondary" data-action="choose-plan" data-plan="${def.id}">${isCurrent ? "Plano atual" : "Assinar este plano"}</button>
       </div>
       ${usageBlock}
     </div>
@@ -313,6 +315,8 @@ async function refreshPlansUI() {
 
   let snap: PlanSnapshot | null = null;
   const token = getToken();
+  const portalBtn = qso("btnBillingPortal");
+  if (portalBtn) portalBtn.classList.toggle("hidden", !token);
   if (token) {
     try {
       snap = await api<PlanSnapshot>("/saas/plan");
@@ -347,21 +351,31 @@ async function refreshPlansUI() {
 
   // bind CTA
   grid.querySelectorAll("button[data-action=choose-plan]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const plan = (btn as HTMLButtonElement).dataset.plan as PlanId;
       localStorage.setItem("selected_plan", plan);
 
       if (!getToken()) {
-        setAlert(`Plano selecionado: <strong>${escapeHtml(plan)}</strong>. Agora faça login/cadastro para continuar.`, "ok");
+        setAlert(`Plano selecionado: <strong>${escapeHtml(plan)}</strong>. Agora faca login/cadastro para continuar.`, "ok");
         window.location.assign("/");
         return;
       }
 
-      // Ainda não existe fluxo de cobrança automático aqui.
-      setAlert(
-        `Plano selecionado: <strong>${escapeHtml(plan)}</strong>. Me diga o valor final de cada plano que você quer e eu ligo isso no backend (checkout/upgrade).`,
-        "ok"
-      );
+      if (plan === "enterprise") {
+        setAlert("Plano Enterprise: fale com o comercial para um pacote sob medida.", "ok");
+        return;
+      }
+
+      try {
+        const out = await api<{ url: string }>("/billing/checkout-session", {
+          method: "POST",
+          body: JSON.stringify({ plan }),
+        });
+        if (out?.url) window.location.assign(out.url);
+        else setAlert("Nao foi possivel iniciar o checkout.", "danger");
+      } catch (e: any) {
+        setAlert(e.message || "Falha ao iniciar checkout.", "danger");
+      }
     });
   });
 }
@@ -521,13 +535,14 @@ function renderAd(ad: Ad): string {
   const url = ad.target_url
     ? `<span class="pill">URL</span><a class="muted" href="${ad.target_url}" target="_blank" rel="noopener noreferrer">${escapeHtml(ad.target_url)}</a>`
     : "";
+  const statusBadge = ad.status === "sent" ? "premium" : "";
   return `
     <div class="card">
       <div class="adHeader">
         <div style="flex: 1 1 520px; min-width: 280px;">
           <div class="adPills">
             <span class="adTitle">${escapeHtml(ad.title)}</span>
-            <span class="pill">${escapeHtml(ad.status)}</span>
+            <span class="pill ${statusBadge}">${escapeHtml(ad.status)}</span>
             <span class="pill">${escapeHtml(ad.channel)}</span>
           </div>
 
@@ -561,11 +576,75 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#039;");
 }
 
-async function refreshAds() {
+type AdsFilters = {
+  q: string;
+  status: string;
+  channel: string;
+  limit: number;
+  offset: number;
+};
+
+const ADS_PAGE_SIZE = 20;
+let adsOffset = 0;
+let adsHasMore = true;
+let adsCache: Ad[] = [];
+
+function getAdsFilters(): AdsFilters {
+  const q = (qso("adsSearch") as HTMLInputElement | null)?.value?.trim() || "";
+  const status = (qso("adsStatus") as HTMLSelectElement | null)?.value || "";
+  const channel = (qso("adsChannel") as HTMLSelectElement | null)?.value || "";
+  return { q, status, channel, limit: ADS_PAGE_SIZE, offset: adsOffset };
+}
+
+function updateAdsSummary(ads: Ad[]) {
+  const totalEl = qso("adsCount");
+  if (totalEl) {
+    totalEl.textContent = `${ads.length} anúncio(s) carregados`;
+  }
+  const summaryEl = qso("adsStatusSummary");
+  if (summaryEl) {
+    const counts = ads.reduce(
+      (acc, ad) => {
+        acc[ad.status] = (acc[ad.status] || 0) + 1;
+        return acc;
+      },
+      {} as Record<AdStatus, number>
+    );
+    summaryEl.innerHTML = `
+      <span class="pill">Draft ${counts.draft || 0}</span>
+      <span class="pill">Agendado ${counts.scheduled || 0}</span>
+      <span class="pill premium">Enviado ${counts.sent || 0}</span>
+      <span class="pill">Pausado ${counts.paused || 0}</span>
+    `;
+  }
+}
+
+function toggleLoadMore(isVisible: boolean) {
+  const btn = qso("adsLoadMore") as HTMLButtonElement | null;
+  if (btn) btn.classList.toggle("hidden", !isVisible);
+}
+
+async function refreshAds(opts?: { append?: boolean }) {
+  const append = opts?.append || false;
+  if (!append) {
+    adsOffset = 0;
+    adsHasMore = true;
+    adsCache = [];
+  }
+
   try {
-    const ads = await api<Ad[]>("/ads");
+    const filters = getAdsFilters();
+    const params = new URLSearchParams();
+    params.set("limit", String(filters.limit));
+    params.set("offset", String(filters.offset));
+    if (filters.q) params.set("q", filters.q);
+    if (filters.status) params.set("status", filters.status);
+    if (filters.channel) params.set("channel", filters.channel);
+
+    const ads = await api<Ad[]>(`/ads?${params.toString()}`);
     const list = qs("adsList");
-    list.innerHTML = ads.map(renderAd).join("") || `<div class="muted">Nenhum anúncio ainda.</div>`;
+    adsCache = append ? adsCache.concat(ads) : ads;
+    list.innerHTML = adsCache.map(renderAd).join("");
 
     // bind actions
     list.querySelectorAll("button[data-action]").forEach((btn) => {
@@ -575,6 +654,17 @@ async function refreshAds() {
         await handleAdAction(action, id);
       });
     });
+
+    const emptyEl = qso("adsEmpty");
+    const totalAds = adsCache.length;
+    if (emptyEl) {
+      emptyEl.textContent = totalAds === 0 ? "Nenhum anúncio encontrado com os filtros atuais." : "";
+    }
+
+    adsOffset = adsCache.length;
+    adsHasMore = ads.length === ADS_PAGE_SIZE;
+    toggleLoadMore(adsHasMore);
+    updateAdsSummary(adsCache);
   } catch (e: any) {
     setAlert(e.message || "Falha ao carregar anúncios.", "danger");
   }
@@ -631,6 +721,39 @@ async function handleAdAction(action: string, id: number) {
 (qs("btnAcceptInvite") as HTMLButtonElement).addEventListener("click", () => void acceptInvite());
 (qs("btnRequestReset") as HTMLButtonElement).addEventListener("click", () => void requestReset());
 (qs("btnConfirmReset") as HTMLButtonElement).addEventListener("click", () => void confirmReset());
+(qso("adsLoadMore") as HTMLButtonElement | null)?.addEventListener("click", () => void refreshAds({ append: true }));
+(qso("adsClear") as HTMLButtonElement | null)?.addEventListener("click", () => {
+  const s = qso("adsSearch") as HTMLInputElement | null;
+  const status = qso("adsStatus") as HTMLSelectElement | null;
+  const channel = qso("adsChannel") as HTMLSelectElement | null;
+  if (s) s.value = "";
+  if (status) status.value = "";
+  if (channel) channel.value = "";
+  void refreshAds();
+});
+
+let searchTimer: number | null = null;
+qso("adsSearch")?.addEventListener("input", () => {
+  if (searchTimer) window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => {
+    void refreshAds();
+  }, 300);
+});
+qso("adsStatus")?.addEventListener("change", () => void refreshAds());
+qso("adsChannel")?.addEventListener("change", () => void refreshAds());
+(qso("btnBillingPortal") as HTMLButtonElement | null)?.addEventListener("click", async () => {
+  if (!getToken()) {
+    setAlert("Faca login para gerenciar sua assinatura.", "danger");
+    return;
+  }
+  try {
+    const out = await api<{ url: string }>("/billing/portal", { method: "POST" });
+    if (out?.url) window.location.assign(out.url);
+    else setAlert("Nao foi possivel abrir o portal.", "danger");
+  } catch (e: any) {
+    setAlert(e.message || "Falha ao abrir portal.", "danger");
+  }
+});
 
 (function init() {
   // label API base
@@ -642,6 +765,7 @@ async function handleAdAction(action: string, id: number) {
 
   // roteamento simples
   const r = route();
+  updateNav();
   if (r === "accept-invite") {
     showOnly("accept-invite");
     const token = getQueryParam("token");
@@ -656,6 +780,15 @@ async function handleAdAction(action: string, id: number) {
   }
   if (r === "plans") {
     showOnly("plans");
+    const success = getQueryParam("success");
+    const canceled = getQueryParam("canceled");
+    if (success || canceled) {
+      setAlert(success ? "Assinatura iniciada com sucesso. Aguardando confirmacao." : "Checkout cancelado.", success ? "ok" : "danger");
+      const u = new URL(window.location.href);
+      u.searchParams.delete("success");
+      u.searchParams.delete("canceled");
+      history.replaceState({}, document.title, u.pathname + u.search);
+    }
     void refreshPlansUI();
     return;
   }
@@ -668,3 +801,20 @@ async function handleAdAction(action: string, id: number) {
     void refreshDashboard();
   }
 })();
+
+function updateNav() {
+  const r = route();
+  const mapping: Record<Section, string> = {
+    home: "navHome",
+    "accept-invite": "navAccept",
+    "reset-password": "navReset",
+    plans: "navPlans",
+  };
+  ["navHome", "navPlans", "navAccept", "navReset"].forEach((id) => {
+    const el = qso(id);
+    if (el) el.removeAttribute("aria-current");
+  });
+  const currentId = mapping[r];
+  const current = qso(currentId);
+  if (current) current.setAttribute("aria-current", "page");
+}

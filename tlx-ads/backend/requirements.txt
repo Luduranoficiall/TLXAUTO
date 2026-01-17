@@ -2,6 +2,7 @@ fastapi==0.115.0
 uvicorn==0.30.6
 PyJWT==2.9.0
 email-validator==2.2.0
+stripe==9.10.0
 
 # rate limit redis (multi-instância)
 redis==5.0.8

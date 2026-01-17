@@ -243,12 +243,26 @@ def init_db() -> None:
               status TEXT NOT NULL,            -- active|trialing|past_due|canceled
               trial_ends_at TEXT,
               current_period_end TEXT,
+              stripe_customer_id TEXT,
+              stripe_subscription_id TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
               FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
             );
             """
         )
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stripe_events (
+              id TEXT PRIMARY KEY,
+              type TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+            """
+        )
+        _ensure_column("tenant_plans", "stripe_customer_id", "TEXT")
+        _ensure_column("tenant_plans", "stripe_subscription_id", "TEXT")
 
         db.execute(
             """
