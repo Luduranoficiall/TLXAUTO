@@ -678,6 +678,7 @@ async def stripe_webhook(request: Request):
 @app.get("/campaigns", response_model=List[CampaignOut])
 def list_campaigns(
     ctx: dict = Depends(require_ctx),
+    q: Optional[str] = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
@@ -687,16 +688,24 @@ def list_campaigns(
     role = str(ctx.get("role") or ROLE_VIEWER)
     require_role(role, ROLE_VIEWER)
 
+    where = ["tenant_id = ?"]
+    params: list[object] = [tenant_id]
+    if q:
+        where.append("(name LIKE ? OR objective LIKE ?)")
+        like = f"%{q}%"
+        params.extend([like, like])
+    where_sql = " AND ".join(where)
+
     with get_db() as db:
         rows = db.execute(
-            """
+            f"""
             SELECT id, tenant_id, name, objective, status, start_at, end_at, created_at, updated_at
             FROM campaigns
-            WHERE tenant_id = ?
+            WHERE {where_sql}
             ORDER BY id DESC
             LIMIT ? OFFSET ?
             """,
-            (tenant_id, int(limit), int(offset)),
+            tuple(params + [int(limit), int(offset)]),
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -709,6 +718,10 @@ def create_campaign(data: CampaignCreateIn, ctx: dict = Depends(require_ctx)):
     role = str(ctx.get("role") or ROLE_VIEWER)
     require_role(role, ROLE_EDITOR)
     ts = now_iso()
+    if data.start_at:
+        _validate_iso8601(str(data.start_at))
+    if data.end_at:
+        _validate_iso8601(str(data.end_at))
 
     with get_db() as db:
         cur = db.execute(
@@ -747,8 +760,12 @@ def update_campaign(campaign_id: int, data: CampaignUpdateIn, ctx: dict = Depend
     if data.status is not None:
         fields["status"] = data.status
     if "start_at" in data.model_fields_set:
+        if data.start_at:
+            _validate_iso8601(str(data.start_at))
         fields["start_at"] = data.start_at
     if "end_at" in data.model_fields_set:
+        if data.end_at:
+            _validate_iso8601(str(data.end_at))
         fields["end_at"] = data.end_at
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -841,6 +858,8 @@ def create_contact(data: ContactCreateIn, ctx: dict = Depends(require_ctx)):
     phone = (data.phone or "").strip() or None
     if not email and not phone:
         raise HTTPException(status_code=400, detail="email or phone is required")
+    if data.consent_at:
+        _validate_iso8601(str(data.consent_at))
 
     import json
 
@@ -889,6 +908,8 @@ def update_contact(contact_id: int, data: ContactUpdateIn, ctx: dict = Depends(r
     if "phone" in data.model_fields_set:
         fields["phone"] = (data.phone or "").strip() or None
     if "consent_at" in data.model_fields_set:
+        if data.consent_at:
+            _validate_iso8601(str(data.consent_at))
         fields["consent_at"] = data.consent_at
     if "meta" in data.model_fields_set:
         fields["meta_json"] = json.dumps(data.meta, ensure_ascii=False) if data.meta is not None else None

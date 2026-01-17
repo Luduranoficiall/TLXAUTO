@@ -123,6 +123,7 @@ type Template = {
 
 let templatesCache: Template[] = [];
 let campaignsCache: Campaign[] = [];
+let contactsCache: Contact[] = [];
 
 function extractVariables(body: string): string[] {
   const vars = new Set<string>();
@@ -1179,10 +1180,14 @@ async function refreshCrm() {
     segmentContactSelect.innerHTML = "";
     if (contactsCount) contactsCount.textContent = "0";
     if (segmentsCount) segmentsCount.textContent = "0";
+    contactsCache = [];
     return;
   }
   try {
-    const [contacts, segments] = await Promise.all([api<Contact[]>("/contacts"), api<Segment[]>("/segments")]);
+    const q = (qso("contactsSearch") as HTMLInputElement | null)?.value?.trim() || "";
+    const params = q ? `?q=${encodeURIComponent(q)}` : "";
+    const [contacts, segments] = await Promise.all([api<Contact[]>(`/contacts${params}`), api<Segment[]>("/segments")]);
+    contactsCache = contacts;
     contactsList.innerHTML = renderContactsTable(contacts) || `<tr><td colspan="4" class="muted">Sem contatos.</td></tr>`;
     if (contactsCount) contactsCount.textContent = String(contacts.length);
     if (segmentsCount) segmentsCount.textContent = String(segments.length);
@@ -1339,7 +1344,9 @@ async function refreshCampaigns() {
     return;
   }
   try {
-    const campaigns = await api<Campaign[]>("/campaigns");
+    const q = (qso("campaignsSearch") as HTMLInputElement | null)?.value?.trim() || "";
+    const params = q ? `?q=${encodeURIComponent(q)}` : "";
+    const campaigns = await api<Campaign[]>(`/campaigns${params}`);
     campaignsCache = campaigns;
     list.innerHTML = renderCampaignsTable(campaigns) || `<tr><td colspan="3" class="muted">Sem campanhas.</td></tr>`;
     count.textContent = String(campaigns.length);
@@ -1519,6 +1526,34 @@ async function refreshQueue() {
   } catch {
     list.innerHTML = `<tr><td colspan="6" class="muted">Falha ao carregar fila.</td></tr>`;
   }
+}
+
+function exportContactsCsv() {
+  if (!contactsCache.length) {
+    setAlert("Sem contatos para exportar.", "danger");
+    return;
+  }
+  const rows = [
+    ["id", "name", "email", "phone", "consent_at"].join(","),
+    ...contactsCache.map((c) =>
+      [
+        c.id,
+        `"${String(c.name || "").replace(/\"/g, '""')}"`,
+        `"${String(c.email || "").replace(/\"/g, '""')}"`,
+        `"${String(c.phone || "").replace(/\"/g, '""')}"`,
+        `"${String(c.consent_at || "").replace(/\"/g, '""')}"`,
+      ].join(",")
+    ),
+  ];
+  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "contacts.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 async function createAd() {
@@ -1774,6 +1809,7 @@ async function handleAdAction(action: string, id: number) {
 (qso("btnRefreshQueue") as HTMLButtonElement | null)?.addEventListener("click", () => void refreshQueue());
 (qso("btnCreateCampaign") as HTMLButtonElement | null)?.addEventListener("click", () => void createCampaign());
 (qso("reportsDays") as HTMLSelectElement | null)?.addEventListener("change", () => refreshReports());
+(qso("btnExportContacts") as HTMLButtonElement | null)?.addEventListener("click", () => exportContactsCsv());
 (qso("reportsAutoRefresh") as HTMLInputElement | null)?.addEventListener("change", (ev) => {
   const checked = (ev.target as HTMLInputElement).checked;
   if (reportsTimer) {
@@ -1872,6 +1908,20 @@ qso("adsSearch")?.addEventListener("input", () => {
 qso("adsStatus")?.addEventListener("change", () => void refreshAds());
 qso("adsChannel")?.addEventListener("change", () => void refreshAds());
 qso("adsCampaign")?.addEventListener("change", () => void refreshAds());
+
+let crmTimer: number | null = null;
+qso("contactsSearch")?.addEventListener("input", () => {
+  if (crmTimer) window.clearTimeout(crmTimer);
+  crmTimer = window.setTimeout(() => {
+    void refreshCrm();
+  }, 300);
+});
+qso("campaignsSearch")?.addEventListener("input", () => {
+  if (crmTimer) window.clearTimeout(crmTimer);
+  crmTimer = window.setTimeout(() => {
+    void refreshCampaigns();
+  }, 300);
+});
 (qso("btnBillingPortal") as HTMLButtonElement | null)?.addEventListener("click", async () => {
   if (!getToken()) {
     setAlert("Faca login para gerenciar sua assinatura.", "danger");
