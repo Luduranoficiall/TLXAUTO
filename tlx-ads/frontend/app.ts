@@ -1531,6 +1531,30 @@ async function addSegmentMember() {
 
 let queueTimer: number | null = null;
 let reportsTimer: number | null = null;
+
+function toggleReportsAuto(enable: boolean) {
+  if (reportsTimer) {
+    window.clearInterval(reportsTimer);
+    reportsTimer = null;
+  }
+  if (enable) {
+    reportsTimer = window.setInterval(() => {
+      refreshReports();
+    }, 8000);
+  }
+}
+
+function toggleQueueAuto(enable: boolean) {
+  if (queueTimer) {
+    window.clearInterval(queueTimer);
+    queueTimer = null;
+  }
+  if (enable) {
+    queueTimer = window.setInterval(() => {
+      void refreshQueue();
+    }, 8000);
+  }
+}
 async function refreshQueue() {
   const list = qso("queueList");
   if (!list) return;
@@ -1854,29 +1878,13 @@ async function handleAdAction(action: string, id: number) {
 (qso("btnExportContacts") as HTMLButtonElement | null)?.addEventListener("click", () => exportContactsCsv());
 (qso("reportsAutoRefresh") as HTMLInputElement | null)?.addEventListener("change", (ev) => {
   const checked = (ev.target as HTMLInputElement).checked;
-  if (reportsTimer) {
-    window.clearInterval(reportsTimer);
-    reportsTimer = null;
-  }
-  if (checked) {
-    reportsTimer = window.setInterval(() => {
-      refreshReports();
-    }, 8000);
-    refreshReports();
-  }
+  toggleReportsAuto(checked);
+  if (checked) refreshReports();
 });
 (qso("queueAutoRefresh") as HTMLInputElement | null)?.addEventListener("change", (ev) => {
   const checked = (ev.target as HTMLInputElement).checked;
-  if (queueTimer) {
-    window.clearInterval(queueTimer);
-    queueTimer = null;
-  }
-  if (checked) {
-    queueTimer = window.setInterval(() => {
-      void refreshQueue();
-    }, 8000);
-    void refreshQueue();
-  }
+  toggleQueueAuto(checked);
+  if (checked) void refreshQueue();
 });
 (qso("btnUseAdAsTemplate") as HTMLButtonElement | null)?.addEventListener("click", () => {
   const bodyEl = qso("adBody") as HTMLTextAreaElement | null;
@@ -1989,6 +1997,18 @@ qso("campaignsSearch")?.addEventListener("input", () => {
     else setAlert("Cancelamento solicitado.", "ok");
   } catch (e: any) {
     setAlert(e.message || "Falha ao cancelar assinatura.", "danger");
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  const reportsChecked = (qso("reportsAutoRefresh") as HTMLInputElement | null)?.checked || false;
+  const queueChecked = (qso("queueAutoRefresh") as HTMLInputElement | null)?.checked || false;
+  if (document.hidden) {
+    toggleReportsAuto(false);
+    toggleQueueAuto(false);
+  } else {
+    toggleReportsAuto(reportsChecked);
+    toggleQueueAuto(queueChecked);
   }
 });
 
