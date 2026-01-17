@@ -266,7 +266,15 @@ def increment_daily_send(db, tenant_id: int, channel: str, amount: int = 1) -> N
 
 
 def plan_snapshot(db, tenant_id: int) -> dict[str, Any]:
-    plan, status = get_plan(db, tenant_id)
+    ensure_plan_row(db, tenant_id)
+    row = db.execute(
+        "SELECT plan, status, trial_ends_at, current_period_end FROM tenant_plans WHERE tenant_id = ?",
+        (int(tenant_id),),
+    ).fetchone()
+    plan = str(row["plan"] or PLAN_FREE) if row else PLAN_FREE
+    status = str(row["status"] or "active") if row else "active"
+    trial_ends_at = row["trial_ends_at"] if row else None
+    current_period_end = row["current_period_end"] if row else None
     limits = _get_limits(plan)
 
     month = _utc_month_key()
@@ -293,6 +301,8 @@ def plan_snapshot(db, tenant_id: int) -> dict[str, Any]:
         "tenant_id": int(tenant_id),
         "plan": plan,
         "status": status,
+        "trial_ends_at": trial_ends_at,
+        "current_period_end": current_period_end,
         "limits": {
             "ads_created_monthly": limits.ads_created_monthly,
             "templates_created_monthly": limits.templates_created_monthly,

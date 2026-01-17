@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
 import sqlite3
@@ -25,9 +25,20 @@ from models import (
     CampaignOut,
     CampaignUpdateIn,
     DashboardOut,
+    DashboardHistoryOut,
+    DashboardHistoryPoint,
+    DashboardChannelsOut,
+    DashboardChannelPoint,
+    DashboardCampaignsOut,
+    DashboardCampaignPoint,
+    DashboardCampaignConvOut,
+    DashboardCampaignConvPoint,
+    DashboardSlaOut,
     DeliveryOut,
     DeliveryQueueCreateIn,
     DeliveryQueueOut,
+    AutomationSegmentSendIn,
+    AutomationSegmentSendOut,
     LinkCreateIn,
     LinkOut,
     LoginIn,
@@ -41,6 +52,7 @@ from models import (
     SegmentCreateIn,
     SegmentMemberAddIn,
     SegmentOut,
+    SegmentUpdateIn,
     TenantCreateIn,
     TenantOut,
     InviteCreateIn,
@@ -50,6 +62,8 @@ from models import (
     PasswordResetConfirmIn,
     TemplateCreateIn,
     TemplateOut,
+    TemplatePreviewIn,
+    TemplatePreviewOut,
     TokenOut,
     PlanCheckoutIn,
     PlanCheckoutOut,
@@ -877,6 +891,35 @@ def create_segment(data: SegmentCreateIn, ctx: dict = Depends(require_ctx)):
     return dict(row)
 
 
+@app.patch("/segments/{segment_id}", response_model=SegmentOut)
+def update_segment(segment_id: int, data: SegmentUpdateIn, ctx: dict = Depends(require_ctx)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_EDITOR)
+
+    name = str(data.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Invalid name")
+    ts = now_iso()
+
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE segments SET name = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
+            (name, ts, int(segment_id), int(tenant_id)),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Segment not found")
+        row = db.execute(
+            "SELECT id, tenant_id, name, created_at, updated_at FROM segments WHERE id = ? AND tenant_id = ?",
+            (int(segment_id), int(tenant_id)),
+        ).fetchone()
+
+    write_audit(tenant_id, int(ctx["user_id"]), "segments.update", "segment", str(int(segment_id)), {"name": name})
+    return dict(row)
+
+
 @app.delete("/segments/{segment_id}")
 def delete_segment(segment_id: int, ctx: dict = Depends(require_ctx)):
     tenant_id = int(ctx.get("tenant_id") or 0)
@@ -966,6 +1009,103 @@ def remove_segment_member(segment_id: int, contact_id: int, ctx: dict = Depends(
 
     write_audit(tenant_id, int(ctx["user_id"]), "segments.remove_member", "segment_member", f"{segment_id}:{contact_id}", {})
     return {"deleted": True}
+
+
+@app.post("/automation/segment-send", response_model=AutomationSegmentSendOut)
+def automation_segment_send(data: AutomationSegmentSendIn, ctx: dict = Depends(require_ctx)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_EDITOR)
+
+    scheduled_at = data.scheduled_at.strip() if data.scheduled_at else None
+    if scheduled_at:
+        _validate_iso8601(scheduled_at)
+
+    channel = str(data.channel or "").strip().lower()
+    variables = data.variables or {}
+    body = data.body
+
+    with get_db() as db:
+        seg = db.execute(
+            "SELECT id FROM segments WHERE id = ? AND tenant_id = ?",
+            (int(data.segment_id), int(tenant_id)),
+        ).fetchone()
+        if not seg:
+            raise HTTPException(status_code=404, detail="Segment not found")
+
+        if data.campaign_id is not None:
+            ok = db.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND tenant_id = ?",
+                (int(data.campaign_id), int(tenant_id)),
+            ).fetchone()
+            if not ok:
+                raise HTTPException(status_code=404, detail="Campaign not found")
+
+        if data.template_id is not None:
+            tpl = db.execute(
+                "SELECT body FROM templates WHERE id = ? AND tenant_id = ?",
+                (int(data.template_id), int(tenant_id)),
+            ).fetchone()
+            if not tpl:
+                raise HTTPException(status_code=404, detail="Template not found")
+            body = render_template(str(tpl[0]), variables)
+        elif variables:
+            body = render_template(body, variables)
+
+        contacts = db.execute(
+            """
+            SELECT c.id, c.email, c.phone
+            FROM segment_members sm
+            JOIN contacts c ON c.id = sm.contact_id
+            WHERE sm.segment_id = ? AND c.tenant_id = ?
+            """,
+            (int(data.segment_id), int(tenant_id)),
+        ).fetchall()
+
+        queued = 0
+        failed = 0
+        skipped = 0
+        ts = now_iso()
+
+        import json
+
+        for c in contacts:
+            to_addr = ""
+            if channel == "email":
+                to_addr = str(c["email"] or "").strip()
+            else:
+                to_addr = str(c["phone"] or "").strip()
+            if not to_addr:
+                skipped += 1
+                continue
+
+            try:
+                check_daily_send_or_raise(db, tenant_id, 1)
+            except HTTPException:
+                failed += 1
+                break
+
+            payload_json = json.dumps(
+                {"body": body, "template_id": data.template_id, "variables": variables},
+                ensure_ascii=False,
+            )
+            key = secure_token(16)
+            db.execute(
+                """
+                INSERT INTO deliveries (
+                  tenant_id, campaign_id, channel, to_addr, payload_json, idempotency_key,
+                  status, attempts, max_attempts, next_attempt_at, last_error, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, 5, ?, NULL, ?, ?)
+                """,
+                (int(tenant_id), data.campaign_id, channel, to_addr, payload_json, key, scheduled_at, ts, ts),
+            )
+            increment_daily_send(db, tenant_id, channel, 1)
+            queued += 1
+
+    write_audit(tenant_id, int(ctx["user_id"]), "automation.segment_send", "segment", str(int(data.segment_id)), {"queued": queued})
+    return {"queued": queued, "failed": failed, "skipped": skipped}
 
 
 @app.post("/deliveries", response_model=DeliveryQueueOut)
@@ -1297,7 +1437,7 @@ def list_ads(
     with get_db() as db:
         rows = db.execute(
             f"""
-            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, status, scheduled_at, created_at, updated_at
+            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, campaign_id, status, scheduled_at, created_at, updated_at
             FROM ads
             WHERE {where_sql}
             ORDER BY id DESC
@@ -1327,6 +1467,14 @@ def create_ad(data: AdCreateIn, ctx: dict = Depends(require_ctx)):
     with get_db() as db:
         check_monthly_resource_or_raise(db, tenant_id, "ads_created", 1)
 
+        if data.campaign_id is not None:
+            ok = db.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND tenant_id = ?",
+                (int(data.campaign_id), int(tenant_id)),
+            ).fetchone()
+            if not ok:
+                raise HTTPException(status_code=404, detail="Campaign not found")
+
         if data.template_id is not None:
             tpl = db.execute(
                 "SELECT body FROM templates WHERE id = ? AND tenant_id = ?",
@@ -1340,8 +1488,8 @@ def create_ad(data: AdCreateIn, ctx: dict = Depends(require_ctx)):
 
         cur = db.execute(
             """
-            INSERT INTO ads (tenant_id, owner_user_id, title, body, rendered_body, target_url, channel, target, template_id, variables_json, status, scheduled_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL, ?, ?)
+            INSERT INTO ads (tenant_id, owner_user_id, title, body, rendered_body, target_url, channel, target, campaign_id, template_id, variables_json, status, scheduled_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL, ?, ?)
             """,
             (
                 tenant_id,
@@ -1352,6 +1500,7 @@ def create_ad(data: AdCreateIn, ctx: dict = Depends(require_ctx)):
                 data.target_url,
                 data.channel,
                 data.target,
+                data.campaign_id,
                 data.template_id,
                 json.dumps(variables, ensure_ascii=False) if variables else None,
                 ts,
@@ -1361,7 +1510,7 @@ def create_ad(data: AdCreateIn, ctx: dict = Depends(require_ctx)):
         ad_id = cur.lastrowid
         row = db.execute(
             """
-            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, status, scheduled_at, created_at, updated_at
+            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, campaign_id, status, scheduled_at, created_at, updated_at
             FROM ads WHERE id = ? AND tenant_id = ?
             """,
             (ad_id, tenant_id),
@@ -1395,6 +1544,8 @@ def update_ad(ad_id: int, data: AdUpdateIn, ctx: dict = Depends(require_ctx)):
         fields["target"] = data.target
     if data.channel is not None:
         fields["channel"] = data.channel
+    if "campaign_id" in data.model_fields_set:
+        fields["campaign_id"] = data.campaign_id
     if data.status is not None:
         fields["status"] = data.status
     if "scheduled_at" in data.model_fields_set:
@@ -1425,6 +1576,14 @@ def update_ad(ad_id: int, data: AdUpdateIn, ctx: dict = Depends(require_ctx)):
         ).fetchone()
         if not current:
             raise HTTPException(status_code=404, detail="Ad not found")
+
+        if "campaign_id" in fields and fields["campaign_id"] is not None:
+            ok = db.execute(
+                "SELECT id FROM campaigns WHERE id = ? AND tenant_id = ?",
+                (int(fields["campaign_id"]), int(tenant_id)),
+            ).fetchone()
+            if not ok:
+                raise HTTPException(status_code=404, detail="Campaign not found")
 
         next_status = fields.get("status", str(current["status"]))
         next_scheduled_at = fields.get("scheduled_at", current["scheduled_at"])
@@ -1469,7 +1628,7 @@ def update_ad(ad_id: int, data: AdUpdateIn, ctx: dict = Depends(require_ctx)):
 
         row = db.execute(
             """
-            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, status, scheduled_at, created_at, updated_at
+            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, campaign_id, status, scheduled_at, created_at, updated_at
             FROM ads WHERE id = ? AND tenant_id = ?
             """,
             (ad_id, tenant_id),
@@ -1535,7 +1694,7 @@ def schedule_ad(
 
         row = db.execute(
             """
-            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, status, scheduled_at, created_at, updated_at
+            SELECT id, tenant_id, title, body, rendered_body, target_url, channel, target, campaign_id, status, scheduled_at, created_at, updated_at
             FROM ads WHERE id = ? AND tenant_id = ?
             """,
             (ad_id, tenant_id),
@@ -1617,6 +1776,39 @@ def list_templates(ctx: dict = Depends(require_ctx)):
             (tenant_id,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+@app.post("/templates/preview", response_model=TemplatePreviewOut)
+def preview_template(data: TemplatePreviewIn, ctx: dict = Depends(require_ctx)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_VIEWER)
+
+    variables = data.variables or {}
+    rendered = render_template(data.body, variables)
+    return {"rendered": rendered}
+
+
+@app.delete("/templates/{tpl_id}")
+def delete_template(tpl_id: int, ctx: dict = Depends(require_ctx)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_EDITOR)
+
+    with get_db() as db:
+        cur = db.execute(
+            "DELETE FROM templates WHERE id = ? AND tenant_id = ?",
+            (int(tpl_id), tenant_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+    write_audit(tenant_id, int(ctx["user_id"]), "templates.delete", "template", str(int(tpl_id)), {})
+    return {"deleted": True}
 
 
 @app.post("/links", response_model=LinkOut)
@@ -1775,6 +1967,300 @@ def dashboard(ctx: dict = Depends(require_ctx)):
         "impressions_proxy": impressions_proxy,
         "ctr_proxy": float(ctr(clicks_i, impressions_proxy)),
         "ts": now_iso(),
+    }
+
+
+@app.get("/dashboard/history", response_model=DashboardHistoryOut)
+def dashboard_history(ctx: dict = Depends(require_ctx), days: int = Query(default=14, ge=1, le=90)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_VIEWER)
+
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = (now - timedelta(days=days - 1)).date().isoformat()
+
+    with get_db() as db:
+        rows = db.execute(
+            """
+            SELECT substr(created_at, 1, 10) as day, event_type, COALESCE(SUM(value),0) as total
+            FROM metric_events
+            WHERE tenant_id = ? AND created_at >= ?
+            GROUP BY day, event_type
+            ORDER BY day ASC
+            """,
+            (tenant_id, start),
+        ).fetchall()
+
+    by_day: dict[str, dict[str, int]] = {}
+    for r in rows:
+        day = str(r["day"])
+        by_day.setdefault(day, {"click": 0, "conversion": 0, "impression": 0})
+        by_day[day][str(r["event_type"] or "")] = int(r["total"] or 0)
+
+    points: list[DashboardHistoryPoint] = []
+    for i in range(days):
+        d = (now - timedelta(days=days - 1 - i)).date().isoformat()
+        stats = by_day.get(d, {"click": 0, "conversion": 0, "impression": 0})
+        clicks = int(stats.get("click") or 0)
+        conv = int(stats.get("conversion") or 0)
+        impressions = int(stats.get("impression") or clicks)
+        ctr_proxy = float(ctr(clicks, impressions))
+        points.append(
+            DashboardHistoryPoint(
+                day=d,
+                clicks=clicks,
+                conversions=conv,
+                impressions_proxy=impressions,
+                ctr_proxy=ctr_proxy,
+            )
+        )
+
+    return {"days": int(days), "points": points}
+
+
+@app.get("/dashboard/channels", response_model=DashboardChannelsOut)
+def dashboard_channels(ctx: dict = Depends(require_ctx), days: int = Query(default=14, ge=1, le=90)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_VIEWER)
+
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = (now - timedelta(days=days - 1)).date().isoformat()
+
+    with get_db() as db:
+        rows = db.execute(
+            """
+            SELECT a.channel as channel, me.event_type as event_type, COALESCE(SUM(me.value),0) as total
+            FROM metric_events me
+            JOIN ads a ON a.id = me.ad_id
+            WHERE me.tenant_id = ? AND me.created_at >= ?
+            GROUP BY a.channel, me.event_type
+            """,
+            (tenant_id, start),
+        ).fetchall()
+
+    by_channel: dict[str, dict[str, int]] = {}
+    for r in rows:
+        ch = str(r["channel"] or "")
+        by_channel.setdefault(ch, {"click": 0, "conversion": 0, "impression": 0})
+        by_channel[ch][str(r["event_type"] or "")] = int(r["total"] or 0)
+
+    points: list[DashboardChannelPoint] = []
+    for ch, stats in sorted(by_channel.items(), key=lambda x: x[0]):
+        clicks = int(stats.get("click") or 0)
+        conv = int(stats.get("conversion") or 0)
+        impressions = int(stats.get("impression") or clicks)
+        points.append(
+            DashboardChannelPoint(
+                channel=ch,
+                clicks=clicks,
+                conversions=conv,
+                impressions_proxy=impressions,
+                ctr_proxy=float(ctr(clicks, impressions)),
+            )
+        )
+
+    return {"days": int(days), "points": points}
+
+
+@app.get("/dashboard/campaigns", response_model=DashboardCampaignsOut)
+def dashboard_campaigns(ctx: dict = Depends(require_ctx), days: int = Query(default=30, ge=1, le=180)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_VIEWER)
+
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = (now - timedelta(days=days - 1)).date().isoformat()
+
+    with get_db() as db:
+        rows = db.execute(
+            """
+            SELECT d.campaign_id as campaign_id, c.name as campaign_name, d.status as status, COUNT(1) as total
+            FROM deliveries d
+            LEFT JOIN campaigns c ON c.id = d.campaign_id
+            WHERE d.tenant_id = ? AND d.created_at >= ?
+            GROUP BY d.campaign_id, c.name, d.status
+            """,
+            (tenant_id, start),
+        ).fetchall()
+
+    by_campaign: dict[str, dict[str, object]] = {}
+    for r in rows:
+        cid = r["campaign_id"]
+        key = str(cid or 0)
+        name = str(r["campaign_name"] or "Sem campanha")
+        by_campaign.setdefault(
+            key,
+            {
+                "campaign_id": int(cid) if cid is not None else None,
+                "campaign_name": name,
+                "sent": 0,
+                "failed": 0,
+                "retrying": 0,
+                "queued": 0,
+                "sending": 0,
+            },
+        )
+        status = str(r["status"] or "")
+        total = int(r["total"] or 0)
+        if status in ("sent", "failed", "retrying", "queued", "sending"):
+            by_campaign[key][status] = int(by_campaign[key][status]) + total
+
+    points: list[DashboardCampaignPoint] = []
+    for _, data in by_campaign.items():
+        sent = int(data["sent"])
+        failed = int(data["failed"])
+        retrying = int(data["retrying"])
+        queued = int(data["queued"])
+        sending = int(data["sending"])
+        total = sent + failed + retrying + queued + sending
+        points.append(
+            DashboardCampaignPoint(
+                campaign_id=data["campaign_id"],
+                campaign_name=str(data["campaign_name"]),
+                total=total,
+                sent=sent,
+                failed=failed,
+                retrying=retrying,
+                queued=queued,
+                sending=sending,
+            )
+        )
+
+    points.sort(key=lambda p: (p.total, p.campaign_name), reverse=True)
+    return {"days": int(days), "points": points}
+
+
+@app.get("/dashboard/campaign-conversions", response_model=DashboardCampaignConvOut)
+def dashboard_campaign_conversions(ctx: dict = Depends(require_ctx), days: int = Query(default=30, ge=1, le=180)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_VIEWER)
+
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = (now - timedelta(days=days - 1)).date().isoformat()
+
+    with get_db() as db:
+        rows = db.execute(
+            """
+            SELECT a.campaign_id as campaign_id, c.name as campaign_name, me.event_type as event_type, COALESCE(SUM(me.value),0) as total
+            FROM metric_events me
+            JOIN ads a ON a.id = me.ad_id
+            LEFT JOIN campaigns c ON c.id = a.campaign_id
+            WHERE me.tenant_id = ? AND me.created_at >= ?
+            GROUP BY a.campaign_id, c.name, me.event_type
+            """,
+            (tenant_id, start),
+        ).fetchall()
+
+    by_campaign: dict[str, dict[str, object]] = {}
+    for r in rows:
+        cid = r["campaign_id"]
+        key = str(cid or 0)
+        name = str(r["campaign_name"] or "Sem campanha")
+        by_campaign.setdefault(
+            key,
+            {
+                "campaign_id": int(cid) if cid is not None else None,
+                "campaign_name": name,
+                "click": 0,
+                "conversion": 0,
+            },
+        )
+        et = str(r["event_type"] or "")
+        if et in ("click", "conversion"):
+            by_campaign[key][et] = int(by_campaign[key][et]) + int(r["total"] or 0)
+
+    points: list[DashboardCampaignConvPoint] = []
+    for _, data in by_campaign.items():
+        points.append(
+            DashboardCampaignConvPoint(
+                campaign_id=data["campaign_id"],
+                campaign_name=str(data["campaign_name"]),
+                clicks=int(data["click"]),
+                conversions=int(data["conversion"]),
+            )
+        )
+
+    points.sort(key=lambda p: (p.conversions, p.clicks, p.campaign_name), reverse=True)
+    return {"days": int(days), "points": points}
+
+
+@app.get("/dashboard/sla", response_model=DashboardSlaOut)
+def dashboard_sla(ctx: dict = Depends(require_ctx), days: int = Query(default=30, ge=1, le=180)):
+    tenant_id = int(ctx.get("tenant_id") or 0)
+    if tenant_id <= 0:
+        tenant_id = 1
+    role = str(ctx.get("role") or ROLE_VIEWER)
+    require_role(role, ROLE_VIEWER)
+
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = (now - timedelta(days=days - 1)).date().isoformat()
+
+    with get_db() as db:
+        rows = db.execute(
+            """
+            SELECT status, attempts, created_at, updated_at
+            FROM deliveries
+            WHERE tenant_id = ? AND created_at >= ?
+            """,
+            (tenant_id, start),
+        ).fetchall()
+
+    total = len(rows)
+    sent = failed = retrying = queued = sending = 0
+    attempts_sum = 0
+    time_sum = 0.0
+    time_count = 0
+
+    for r in rows:
+        status = str(r["status"] or "")
+        attempts = int(r["attempts"] or 0)
+        attempts_sum += attempts
+        if status == "sent":
+            sent += 1
+        elif status == "failed":
+            failed += 1
+        elif status == "retrying":
+            retrying += 1
+        elif status == "queued":
+            queued += 1
+        elif status == "sending":
+            sending += 1
+
+        if status in ("sent", "failed"):
+            try:
+                created = datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00"))
+                updated = datetime.fromisoformat(str(r["updated_at"]).replace("Z", "+00:00"))
+                delta = max(0.0, (updated - created).total_seconds())
+                time_sum += delta
+                time_count += 1
+            except Exception:
+                pass
+
+    avg_attempts = float(attempts_sum / total) if total else 0.0
+    avg_time_sec = float(time_sum / time_count) if time_count else 0.0
+    failure_rate = float(failed / total) if total else 0.0
+
+    return {
+        "days": int(days),
+        "total": total,
+        "sent": sent,
+        "failed": failed,
+        "retrying": retrying,
+        "queued": queued,
+        "sending": sending,
+        "avg_attempts": avg_attempts,
+        "avg_time_sec": avg_time_sec,
+        "failure_rate": failure_rate,
     }
 
 

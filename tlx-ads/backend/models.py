@@ -46,6 +46,7 @@ class AdCreateIn(BaseModel):
     target_url: Optional[str] = Field(default=None, max_length=500)
     channel: str = Field(min_length=1, max_length=40)  # whatsapp, x, etc.
     target: Optional[str] = Field(default=None, max_length=220)  # e164/email/self
+    campaign_id: Optional[int] = None
     template_id: Optional[int] = None
     variables: Optional[dict[str, str]] = None
 
@@ -56,6 +57,7 @@ class AdUpdateIn(BaseModel):
     target_url: Optional[str] = Field(default=None, max_length=500)
     channel: Optional[str] = Field(default=None, min_length=1, max_length=40)
     target: Optional[str] = Field(default=None, max_length=220)
+    campaign_id: Optional[int] = None
     status: Optional[AdStatus] = None
     scheduled_at: Optional[str] = None  # ISO 8601 string
     template_id: Optional[int] = None
@@ -71,6 +73,7 @@ class AdOut(BaseModel):
     target_url: Optional[str]
     channel: str
     target: Optional[str] = None
+    campaign_id: Optional[int] = None
     status: AdStatus
     scheduled_at: Optional[str]
     created_at: str
@@ -99,6 +102,15 @@ class TemplateOut(BaseModel):
     updated_at: str
 
 
+class TemplatePreviewIn(BaseModel):
+    body: str = Field(min_length=1, max_length=8000)
+    variables: Optional[dict[str, str]] = None
+
+
+class TemplatePreviewOut(BaseModel):
+    rendered: str
+
+
 class LinkCreateIn(BaseModel):
     destination_url: str = Field(min_length=3, max_length=4000)
     ad_id: Optional[int] = None
@@ -119,6 +131,73 @@ class DashboardOut(BaseModel):
     impressions_proxy: int
     ctr_proxy: float
     ts: str
+
+
+class DashboardHistoryPoint(BaseModel):
+    day: str
+    clicks: int
+    conversions: int
+    impressions_proxy: int
+    ctr_proxy: float
+
+
+class DashboardHistoryOut(BaseModel):
+    days: int
+    points: list[DashboardHistoryPoint]
+
+
+class DashboardChannelPoint(BaseModel):
+    channel: str
+    clicks: int
+    conversions: int
+    impressions_proxy: int
+    ctr_proxy: float
+
+
+class DashboardChannelsOut(BaseModel):
+    days: int
+    points: list[DashboardChannelPoint]
+
+
+class DashboardCampaignPoint(BaseModel):
+    campaign_id: Optional[int] = None
+    campaign_name: str
+    total: int
+    sent: int
+    failed: int
+    retrying: int
+    queued: int
+    sending: int
+
+
+class DashboardCampaignsOut(BaseModel):
+    days: int
+    points: list[DashboardCampaignPoint]
+
+
+class DashboardCampaignConvPoint(BaseModel):
+    campaign_id: Optional[int] = None
+    campaign_name: str
+    clicks: int
+    conversions: int
+
+
+class DashboardCampaignConvOut(BaseModel):
+    days: int
+    points: list[DashboardCampaignConvPoint]
+
+
+class DashboardSlaOut(BaseModel):
+    days: int
+    total: int
+    sent: int
+    failed: int
+    retrying: int
+    queued: int
+    sending: int
+    avg_attempts: float
+    avg_time_sec: float
+    failure_rate: float
 
 
 class TenantCreateIn(BaseModel):
@@ -238,6 +317,10 @@ class SegmentCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=160)
 
 
+class SegmentUpdateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
 class SegmentOut(BaseModel):
     id: int
     tenant_id: int
@@ -274,3 +357,19 @@ class DeliveryQueueOut(BaseModel):
     last_error: Optional[str] = None
     created_at: str
     updated_at: str
+
+
+class AutomationSegmentSendIn(BaseModel):
+    segment_id: int
+    channel: str = Field(min_length=1, max_length=40)
+    body: str = Field(min_length=1, max_length=4000)
+    scheduled_at: Optional[str] = None
+    campaign_id: Optional[int] = None
+    template_id: Optional[int] = None
+    variables: Optional[dict[str, str]] = None
+
+
+class AutomationSegmentSendOut(BaseModel):
+    queued: int
+    failed: int
+    skipped: int

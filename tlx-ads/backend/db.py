@@ -124,6 +124,7 @@ def init_db() -> None:
               target_url TEXT,
               channel TEXT NOT NULL,
               target TEXT,
+              campaign_id INTEGER,
               template_id INTEGER,
               variables_json TEXT,
               status TEXT NOT NULL DEFAULT 'draft',
@@ -132,6 +133,7 @@ def init_db() -> None:
               updated_at TEXT NOT NULL,
               FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
               FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+              FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL,
               FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE SET NULL
             );
             """
@@ -302,6 +304,7 @@ def init_db() -> None:
 
         # Migração leve: adiciona coluna em DBs antigos
         _ensure_column("tenant_usage_monthly", "invites_created", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column("ads", "campaign_id", "INTEGER")
 
         # Campanhas/CRM básico
         db.execute(
@@ -404,12 +407,14 @@ def init_db() -> None:
         db.execute("CREATE INDEX IF NOT EXISTS idx_ads_tenant ON ads(tenant_id);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_ads_owner_status ON ads(owner_user_id, status);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_ads_tenant_status ON ads(tenant_id, status);")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_ads_campaign ON ads(tenant_id, campaign_id);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_deliveries_ad ON ad_deliveries(ad_id);")
 
         db.execute("CREATE INDEX IF NOT EXISTS idx_templates_tenant ON templates(tenant_id, id);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_links_tenant_slug ON short_links(tenant_id, slug);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_memberships_tenant ON memberships(tenant_id);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_metric_tenant_type ON metric_events(tenant_id, event_type);")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_metric_tenant_day ON metric_events(tenant_id, created_at);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit_logs(tenant_id);")
 
         db.execute("CREATE INDEX IF NOT EXISTS idx_tplan_tenant ON tenant_plans(tenant_id);")
@@ -420,6 +425,7 @@ def init_db() -> None:
         db.execute("CREATE INDEX IF NOT EXISTS idx_segments_tenant ON segments(tenant_id, id);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_segment_members ON segment_members(segment_id, contact_id);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_deliveries_queue ON deliveries(tenant_id, status, next_attempt_at, id);")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_deliveries_tenant_created ON deliveries(tenant_id, created_at);")
 
         db.execute("CREATE INDEX IF NOT EXISTS idx_invite_tenant_email ON invite_tokens(tenant_id, email);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_invite_token ON invite_tokens(token);")

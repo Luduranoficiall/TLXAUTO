@@ -209,6 +209,14 @@
         color: rgba(156, 76, 36, 0.98);
         text-shadow: 0 10px 26px rgba(156, 76, 36, 0.10);
       }
+      .kpi.danger {
+        border-color: rgba(192, 54, 44, 0.45);
+        background: linear-gradient(180deg, rgba(192, 54, 44, 0.12), rgba(255, 255, 255, 0.9));
+      }
+      .kpi.danger .kpiValue {
+        color: rgba(112, 28, 24, 0.98);
+        text-shadow: 0 10px 26px rgba(192, 54, 44, 0.10);
+      }
 
       /* Anúncios (layout mais enterprise) */
       .adHeader {
@@ -385,6 +393,115 @@
         background: transparent;
       }
 
+      .metricGrid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      @media (max-width: 900px) {
+        .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 560px) {
+        .metricGrid { grid-template-columns: 1fr; }
+      }
+
+      .templateGrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 900px) {
+        .templateGrid { grid-template-columns: 1fr; }
+      }
+
+      .templateList {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .historyChart {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
+        gap: 6px;
+        align-items: end;
+        height: 140px;
+      }
+      .historyBar {
+        width: 100%;
+        border-radius: 8px 8px 4px 4px;
+        background: linear-gradient(180deg, rgba(14, 124, 123, 0.85), rgba(10, 87, 87, 0.8));
+        box-shadow: 0 6px 18px rgba(14, 124, 123, 0.18);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: flex-end;
+      }
+      .historyBar.low {
+        background: linear-gradient(180deg, rgba(196, 98, 45, 0.75), rgba(156, 76, 36, 0.75));
+      }
+      .historyBarInner {
+        width: 100%;
+        background: linear-gradient(180deg, rgba(196, 98, 45, 0.8), rgba(156, 76, 36, 0.8));
+        border-radius: 6px 6px 2px 2px;
+      }
+
+      .barTrack {
+        width: 100%;
+        height: 10px;
+        background: rgba(231, 221, 207, 0.8);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .barFill {
+        height: 100%;
+        background: linear-gradient(90deg, rgba(14, 124, 123, 0.85), rgba(10, 87, 87, 0.85));
+      }
+      .historyLabelRow {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
+        gap: 6px;
+        margin-top: 8px;
+        font-size: 10px;
+        color: var(--muted);
+      }
+
+      .varsForm {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      @media (max-width: 900px) {
+        .varsForm { grid-template-columns: 1fr; }
+      }
+
+      .listGrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 900px) {
+        .listGrid { grid-template-columns: 1fr; }
+      }
+
+      .miniTable {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .miniTable th, .miniTable td {
+        padding: 8px 6px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+      }
+      .miniTable th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 12px;
+      }
+
       .fadeIn {
         animation: fadeInUp 0.6s ease both;
       }
@@ -558,6 +675,108 @@
       </div>
 
       <div class="card fadeIn">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div>
+            <h3 style="margin:0;">Relatorios</h3>
+            <div class="muted" style="margin-top:6px;">Funnel simples para acompanhar eficiencia.</div>
+          </div>
+          <div class="row">
+            <button id="btnRefreshReports" class="ghostBtn">Atualizar relatorios</button>
+            <select id="reportsDays">
+              <option value="7">7 dias</option>
+              <option value="14" selected>14 dias</option>
+              <option value="30">30 dias</option>
+              <option value="90">90 dias</option>
+            </select>
+            <label class="muted" style="display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="reportsAutoRefresh" /> Auto
+            </label>
+          </div>
+        </div>
+        <div class="metricGrid" style="margin-top:12px;">
+          <div class="kpi">
+            <div class="muted">Impressões (proxy)</div>
+            <div class="kpiValue" id="kpiImpressions">—</div>
+          </div>
+          <div class="kpi">
+            <div class="muted">Taxa de clique</div>
+            <div class="kpiValue" id="kpiCtrPct">—</div>
+          </div>
+          <div class="kpi premium">
+            <div class="muted">Taxa de conversão</div>
+            <div class="kpiValue" id="kpiCvr">—</div>
+          </div>
+          <div class="kpi">
+            <div class="muted">Conversões por 100 cliques</div>
+            <div class="kpiValue" id="kpiConvPerClick">—</div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:12px;">
+          <div class="muted" style="margin-bottom:8px;" id="historyTitle">Historico 14 dias (cliques)</div>
+          <div id="historyChart" class="historyChart"></div>
+          <div id="historyLabels" class="historyLabelRow"></div>
+        </div>
+
+        <div class="templateGrid" style="margin-top:12px;">
+          <div class="card">
+            <div style="font-weight:700;">Por canal</div>
+            <table class="miniTable" style="margin-top:8px;">
+              <thead>
+                <tr>
+                  <th>Canal</th>
+                  <th>Cliques</th>
+                  <th>Conv</th>
+                  <th>CTR</th>
+                </tr>
+              </thead>
+              <tbody id="channelsTable"></tbody>
+            </table>
+            <div class="muted" style="margin-top:8px;">Conversoes por canal</div>
+            <div id="channelsChart" class="historyChart"></div>
+          </div>
+          <div class="card">
+            <div style="font-weight:700;">Por campanha</div>
+            <table class="miniTable" style="margin-top:8px;">
+              <thead>
+                <tr>
+                  <th>Campanha</th>
+                  <th>Total</th>
+                  <th>Sent</th>
+                  <th>Fail</th>
+                </tr>
+              </thead>
+              <tbody id="campaignsTable"></tbody>
+            </table>
+            <div class="muted" style="margin-top:8px;">Conversoes por campanha</div>
+            <div id="campaignsChart" class="historyChart"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <div style="font-weight:700;">SLA de entregas</div>
+          <div class="metricGrid" style="margin-top:10px;">
+            <div class="kpi">
+              <div class="muted">Total</div>
+              <div class="kpiValue" id="slaTotal">—</div>
+            </div>
+            <div class="kpi premium" id="slaFailCard">
+              <div class="muted">Falha (%)</div>
+              <div class="kpiValue" id="slaFailRate">—</div>
+            </div>
+            <div class="kpi">
+              <div class="muted">Tentativas médias</div>
+              <div class="kpiValue" id="slaAttempts">—</div>
+            </div>
+            <div class="kpi">
+              <div class="muted">Tempo médio (s)</div>
+              <div class="kpiValue" id="slaAvgTime">—</div>
+            </div>
+          </div>
+          <div class="muted" id="slaStatus" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <div class="card fadeIn">
         <h3>Novo Anúncio</h3>
         <div class="grid2">
           <div>
@@ -574,6 +793,32 @@
           </div>
         </div>
 
+        <div class="grid2" style="margin-top: 10px;">
+          <div>
+            <label>Template (opcional)</label>
+            <select id="adTemplate">
+              <option value="">Sem template</option>
+            </select>
+          </div>
+          <div>
+            <label>Variáveis (JSON)</label>
+            <input id="adVariables" placeholder='{"produto":"Plano Pro","desconto":"20%"}' />
+          </div>
+        </div>
+        <div class="grid2" style="margin-top: 10px;">
+          <div>
+            <label>Campanha (opcional)</label>
+            <select id="adCampaignId">
+              <option value="">Sem campanha</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <div class="muted">Vincule o anuncio para métricas por campanha.</div>
+          </div>
+        </div>
+        <div id="adVariablesForm" class="varsForm"></div>
+
         <div style="margin-top: 10px;">
           <label>Texto</label>
           <textarea id="adBody" placeholder="Escreva seu anúncio aqui..."></textarea>
@@ -587,6 +832,273 @@
         <div class="row" style="margin-top: 12px;">
           <button id="btnCreateAd">Criar (Draft)</button>
           <button id="btnRefresh">Atualizar Lista</button>
+          <button id="btnPreviewAd" class="ghostBtn">Preview</button>
+        </div>
+
+        <div id="adPreview" class="card hidden" style="margin-top:10px;">
+          <div class="muted" style="margin-bottom:6px;">Preview</div>
+          <div id="adPreviewBody" style="white-space: pre-wrap;"></div>
+        </div>
+      </div>
+
+      <div class="card fadeIn">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div>
+            <h3 style="margin:0;">Templates</h3>
+            <div class="muted" style="margin-top:6px;">Salve padroes e reutilize textos rapidamente.</div>
+          </div>
+          <button id="btnUseAdAsTemplate" class="ghostBtn">Usar texto do anuncio</button>
+        </div>
+
+        <div class="templateGrid" style="margin-top:12px;">
+          <div>
+            <label>Nome do template</label>
+            <input id="tplName" placeholder="Ex: Oferta Semana 01" />
+            <div style="margin-top: 10px;">
+              <label>Texto do template</label>
+              <textarea id="tplBody" placeholder="Copie ou escreva o template aqui..."></textarea>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button id="btnCreateTemplate">Salvar template</button>
+              <button id="btnRefreshTemplates" class="ghostBtn">Atualizar lista</button>
+            </div>
+          </div>
+          <div>
+            <div class="muted" style="margin-bottom:8px;">Templates salvos</div>
+            <div id="templatesList" class="templateList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card fadeIn">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div>
+            <h3 style="margin:0;">Contatos & Segmentos</h3>
+            <div class="muted" style="margin-top:6px;">Cadastre contatos e monte segmentos para automacoes.</div>
+          </div>
+          <button id="btnRefreshCrm" class="ghostBtn">Atualizar</button>
+        </div>
+
+        <div class="listGrid" style="margin-top:12px;">
+          <div class="card">
+            <div style="font-weight:700; margin-bottom:8px;">Novo contato</div>
+            <div class="grid2">
+              <div>
+                <label>Nome</label>
+                <input id="contactName" placeholder="Cliente X" />
+              </div>
+              <div>
+                <label>Email</label>
+                <input id="contactEmail" placeholder="cliente@email.com" />
+              </div>
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+              <div>
+                <label>Telefone</label>
+                <input id="contactPhone" placeholder="+55 11 99999-9999" />
+              </div>
+              <div>
+                <label>Consentimento (ISO 8601)</label>
+                <input id="contactConsent" placeholder="2026-01-11T15:00:00+00:00" />
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button id="btnCreateContact">Salvar contato</button>
+            </div>
+          </div>
+          <div class="card">
+            <div style="font-weight:700; margin-bottom:8px;">Novo segmento</div>
+            <div>
+              <label>Nome do segmento</label>
+              <input id="segmentName" placeholder="Ex: Leads Quentes" />
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button id="btnCreateSegment">Criar segmento</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="listGrid" style="margin-top:12px;">
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+              <div style="font-weight:700;">Lista de contatos</div>
+              <div class="muted" id="contactsCount">0</div>
+            </div>
+            <table class="miniTable" style="margin-top:8px;">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Email</th>
+                  <th>Telefone</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="contactsList"></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+              <div style="font-weight:700;">Segmentos</div>
+              <div class="muted" id="segmentsCount">0</div>
+            </div>
+            <div class="grid2" style="margin-top:8px;">
+              <div>
+                <label>Segmento</label>
+                <select id="segmentSelect"></select>
+              </div>
+              <div>
+                <label>Contato</label>
+                <select id="segmentContactSelect"></select>
+              </div>
+            </div>
+            <div class="row" style="margin-top:8px;">
+              <button id="btnAddSegmentMember" class="ghostBtn">Adicionar no segmento</button>
+            </div>
+            <div class="muted" style="margin-top:10px;">Lista de segmentos</div>
+            <table class="miniTable" style="margin-top:6px;">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="segmentsList"></tbody>
+            </table>
+            <div class="muted" style="margin-top:8px;">Membros do segmento</div>
+            <div id="segmentMembers" class="templateList"></div>
+          </div>
+        </div>
+
+        <div class="listGrid" style="margin-top:12px;">
+          <div class="card">
+            <div style="font-weight:700; margin-bottom:8px;">Nova campanha</div>
+            <div class="grid2">
+              <div>
+                <label>Nome</label>
+                <input id="campaignName" placeholder="Ex: Black Friday" />
+              </div>
+              <div>
+                <label>Status</label>
+                <select id="campaignStatus">
+                  <option value="active">Ativa</option>
+                  <option value="paused">Pausada</option>
+                  <option value="draft">Draft</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:10px;">
+              <label>Objetivo</label>
+              <input id="campaignObjective" placeholder="Ex: Gerar leads qualificados" />
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+              <div>
+                <label>Inicio (ISO 8601)</label>
+                <input id="campaignStart" placeholder="2026-01-11T00:00:00+00:00" />
+              </div>
+              <div>
+                <label>Fim (ISO 8601)</label>
+                <input id="campaignEnd" placeholder="2026-02-11T00:00:00+00:00" />
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button id="btnCreateCampaign">Salvar campanha</button>
+            </div>
+          </div>
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+              <div style="font-weight:700;">Campanhas</div>
+              <div class="muted" id="campaignsCount">0</div>
+            </div>
+            <table class="miniTable" style="margin-top:8px;">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="campaignsList"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card fadeIn">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div>
+            <h3 style="margin:0;">Automacao de Campanhas</h3>
+            <div class="muted" style="margin-top:6px;">Disparo em massa por segmento com agendamento.</div>
+          </div>
+          <button id="btnRunAutomation" class="ghostBtn">Disparar agora</button>
+        </div>
+
+        <div class="templateGrid" style="margin-top:12px;">
+          <div>
+            <label>Segmento (ID)</label>
+            <input id="autoSegmentId" placeholder="Ex: 12" />
+          </div>
+          <div>
+            <label>Campanha (opcional)</label>
+            <select id="autoCampaignId">
+              <option value="">Sem campanha</option>
+            </select>
+          </div>
+        </div>
+        <div class="templateGrid" style="margin-top:12px;">
+          <div>
+            <label>Canal</label>
+            <select id="autoChannel">
+              <option value="whatsapp">WhatsApp</option>
+              <option value="x">X (Twitter)</option>
+              <option value="email">Email</option>
+            </select>
+          </div>
+          <div>
+            <label>Agendar (ISO 8601)</label>
+            <input id="autoScheduleAt" placeholder="2026-01-11T15:00:00+00:00" />
+          </div>
+        </div>
+        <div class="templateGrid" style="margin-top:12px;">
+          <div>
+            <label>Template (opcional)</label>
+            <select id="autoTemplate">
+              <option value="">Sem template</option>
+            </select>
+          </div>
+          <div>
+            <label>Variáveis (JSON)</label>
+            <input id="autoVariables" placeholder='{"produto":"Plano Pro","desconto":"20%"}' />
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <label>Mensagem</label>
+          <textarea id="autoBody" placeholder="Texto da campanha..."></textarea>
+        </div>
+        <div id="autoStatus" class="muted" style="margin-top:8px;"></div>
+
+        <div class="card" style="margin-top:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="font-weight:700;">Fila de envios</div>
+            <div class="row">
+              <button id="btnRefreshQueue" class="ghostBtn">Atualizar fila</button>
+              <label class="muted" style="display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="queueAutoRefresh" /> Auto
+              </label>
+            </div>
+          </div>
+          <table class="miniTable" style="margin-top:8px;">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Canal</th>
+                <th>Destino</th>
+                <th>Status</th>
+                <th>Tentativas</th>
+                <th>Próxima</th>
+              </tr>
+            </thead>
+            <tbody id="queueList"></tbody>
+          </table>
         </div>
       </div>
 
