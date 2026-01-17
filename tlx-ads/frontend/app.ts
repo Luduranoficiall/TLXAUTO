@@ -1733,7 +1733,10 @@ async function handleAdAction(action: string, id: number) {
 (qso("btnRefreshTemplates") as HTMLButtonElement | null)?.addEventListener("click", () => void refreshTemplates());
 (qso("btnPreviewAd") as HTMLButtonElement | null)?.addEventListener("click", () => void previewAd());
 (qso("btnRunAutomation") as HTMLButtonElement | null)?.addEventListener("click", () => void runAutomation());
-(qso("btnRefreshCrm") as HTMLButtonElement | null)?.addEventListener("click", () => void refreshCrm());
+(qso("btnRefreshCrm") as HTMLButtonElement | null)?.addEventListener("click", () => {
+  void refreshCrm();
+  void refreshCampaigns();
+});
 (qso("btnCreateContact") as HTMLButtonElement | null)?.addEventListener("click", () => void createContact());
 (qso("btnCreateSegment") as HTMLButtonElement | null)?.addEventListener("click", () => void createSegment());
 (qso("btnAddSegmentMember") as HTMLButtonElement | null)?.addEventListener("click", () => void addSegmentMember());

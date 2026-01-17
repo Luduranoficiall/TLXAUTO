@@ -562,6 +562,31 @@ async def stripe_webhook(request: Request):
                     stripe_subscription_id=subscription_id,
                 )
 
+        if event_type in ("invoice.payment_succeeded", "invoice.payment_failed"):
+            inv = event.get("data", {}).get("object", {})
+            lines = inv.get("lines", {}).get("data", [])
+            price_id = lines[0].get("price", {}).get("id") if lines else ""
+            plan = _plan_for_price_id(price_id) or str(inv.get("metadata", {}).get("plan") or "free")
+            tenant_id = int(inv.get("metadata", {}).get("tenant_id") or 0)
+            customer_id = inv.get("customer")
+            subscription_id = inv.get("subscription")
+            period_end = None
+            if lines:
+                period_end = lines[0].get("period", {}).get("end")
+            status = "active" if event_type == "invoice.payment_succeeded" else "past_due"
+            if tenant_id <= 0:
+                tenant_id = _find_tenant_by_stripe(db, subscription_id, customer_id)
+            if tenant_id > 0:
+                set_plan(
+                    db,
+                    tenant_id,
+                    plan,
+                    status,
+                    current_period_end=_unix_to_iso(period_end),
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                )
+
         if event_type == "checkout.session.completed":
             session = event.get("data", {}).get("object", {})
             if session.get("mode") == "subscription":
